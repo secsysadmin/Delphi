@@ -6,11 +6,16 @@ import type { EventInput } from "@/types";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const includeDrafts = new URL(request.url).searchParams.get("admin") === "1" && await isAdmin();
-  const event = await getEvent(id, includeDrafts);
-  if (!event) return NextResponse.json({ error: "Event not found." }, { status: 404 });
-  return NextResponse.json({ event });
+  try {
+    const { id } = await params;
+    const includeDrafts = new URL(request.url).searchParams.get("admin") === "1" && await isAdmin();
+    const event = await getEvent(id, includeDrafts);
+    if (!event) return NextResponse.json({ error: "Event not found." }, { status: 404 });
+    return NextResponse.json({ event });
+  } catch (error) {
+    console.error("Could not load event", error);
+    return NextResponse.json({ error: "Could not load this event. Please try again." }, { status: 500 });
+  }
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {

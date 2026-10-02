@@ -6,6 +6,16 @@ import { ArrowLeft, CalendarDays, Check, Clock3, MapPin, Users } from "lucide-re
 import { eventPhase, formatDate, formatTime } from "@/lib/utils";
 import type { FormField, RegistrationEvent } from "@/types";
 
+async function readApiJson<T extends { error?: string }>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) throw new Error("The event service returned an empty response. Please refresh and try again.");
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(response.ok ? "The event service returned an unexpected response. Please refresh and try again." : `Could not load the event (${response.status}). Please try again.`);
+  }
+}
+
 function Field({ field, value, onChange }: { field: FormField; value: string | string[] | boolean | undefined; onChange: (value: string | string[] | boolean) => void }) {
   const id = `field-${field.id}`;
   const common = { id, required: field.required, "aria-describedby": field.helpText ? `${id}-help` : undefined };
@@ -32,8 +42,9 @@ export function EventRegistration({ slug }: { slug: string }) {
 
   useEffect(() => {
     fetch(`/api/events/${encodeURIComponent(slug)}`).then(async (response) => {
-      const data = await response.json();
+      const data = await readApiJson<{ event?: RegistrationEvent; error?: string }>(response);
       if (!response.ok) throw new Error(data.error);
+      if (!data.event) throw new Error("Event details were unavailable. Please try again.");
       setEvent(data.event);
     }).catch((reason) => setError(reason.message)).finally(() => setLoading(false));
   }, [slug]);
@@ -51,7 +62,13 @@ export function EventRegistration({ slug }: { slug: string }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slotId: slotId || null, firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"), uin: form.get("uin"), answers }),
     });
-    const data = await response.json();
+    let data: { error?: string };
+    try {
+      data = await readApiJson<{ error?: string }>(response);
+    } catch (reason) {
+      setSending(false);
+      return setError(reason instanceof Error ? reason.message : "Registration failed. Please try again.");
+    }
     setSending(false);
     if (!response.ok) return setError(data.error || "Registration failed.");
     setComplete(true);

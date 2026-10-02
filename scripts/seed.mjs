@@ -1,13 +1,21 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import postgres from "postgres";
 
-if (!process.env.DATABASE_URL) {
+const databaseUrl = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+
+if (!databaseUrl) {
   console.error("DATABASE_URL is required. Copy .env.example to .env.local or run with DATABASE_URL set.");
   process.exit(1);
 }
 
 const year = new Date().getFullYear();
 const at = (value) => new Date(value).toISOString();
+const slotUuid = (value) => {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) return value;
+  const hex = createHash("sha256").update(`sec-registration-slot:${value}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+};
 const events = [
   {
     id: "7f317a6a-b7de-4b56-9fb7-00f41e1cb001",
@@ -73,7 +81,7 @@ const events = [
   },
 ];
 
-const sql = postgres(process.env.DATABASE_URL, { max: 1, prepare: false });
+const sql = postgres(databaseUrl, { max: 1, prepare: false });
 try {
   const schema = await fs.readFile(new URL("../db/schema.sql", import.meta.url), "utf8");
   await sql.unsafe(schema);
@@ -93,10 +101,11 @@ try {
       `;
       inserted += rows.length;
       for (const slot of event.slots) {
+        const id = slotUuid(slot.id);
         await tx`
           insert into sec_registration.event_slots (id, event_id, label, start_at, end_at, location, capacity,
             confirmation_subject, confirmation_body, accent_color)
-          values (${slot.id}, ${event.id}, ${slot.label}, ${slot.startAt}, ${slot.endAt}, ${slot.location}, ${slot.capacity},
+          values (${id}, ${event.id}, ${slot.label}, ${slot.startAt}, ${slot.endAt}, ${slot.location}, ${slot.capacity},
             ${slot.confirmationSubject ?? null}, ${slot.confirmationBody ?? null}, ${slot.accentColor ?? null})
           on conflict (id) do nothing
         `;
