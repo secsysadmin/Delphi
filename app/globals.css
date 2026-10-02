@@ -260,7 +260,7 @@ label > small { color: var(--muted); font-weight: 500; }
 .template-variables strong { margin-right: 5px; font-size: .75rem; }
 .template-variables code { border: 1px solid #ddd5cc; border-radius: 4px; padding: 4px 6px; color: var(--maroon); background: #f6f1ee; font-size: .7rem; }
 .email-preview { max-width: 570px; overflow: hidden; margin-top: 22px; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 8px 25px rgba(0,0,0,.06); }
-.email-preview > div:first-child { display: flex; flex-direction: column; gap: 6px; padding: 20px 24px; color: white; }
+.email-preview > div:first-child { display: flex; flex-direction: column; gap: 6px; padding: 20px 24px; color: white; background: var(--maroon); }
 .email-preview > div:first-child small { font-size: .6rem; letter-spacing: .14em; }
 .email-preview > div:first-child strong { font-size: 1.15rem; }
 .email-preview > div:last-child { padding: 22px; }
