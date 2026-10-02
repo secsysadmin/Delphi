@@ -29,6 +29,8 @@ export function EventDirectory() {
     return next;
   }, [events, query, sort]);
 
+  const nextEvent = useMemo(() => events.filter((event) => eventPhase(event) !== "past" && event.status === "published").sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [events]);
+
   useEffect(() => {
     if (!visible.length) return;
     if (typeof IntersectionObserver === "undefined") {
@@ -94,9 +96,27 @@ export function EventDirectory() {
 
   return (
     <>
-      <section className="events-section shell">
+      <section className="directory-hero">
+        <div className="shell directory-hero__inner">
+          <div className="directory-hero__copy">
+            <h1>Plan your next SEC event.</h1>
+            <p>Browse workshops, conversations, and hands-on sessions. Choose the event that fits, then register before its capacity closes.</p>
+            <a className="directory-hero__link" href="#event-directory">Browse the calendar <ArrowRight size={18} /></a>
+          </div>
+          <div className="directory-hero__next" aria-live="polite">
+            {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
+              <span>Next on the calendar</span>
+              <strong>{nextEvent.title}</strong>
+              <p><CalendarDays size={17} />{formatDate(nextEvent.startAt, true)}</p>
+              <p><MapPin size={17} />{nextEvent.location}</p>
+              <em>View event <ArrowRight size={18} /></em>
+            </Link> : <div><span>Next on the calendar</span><strong>{loading ? "Loading upcoming events…" : "New events are being scheduled."}</strong></div>}
+          </div>
+        </div>
+      </section>
+      <section id="event-directory" className="events-section shell">
         <div className="section-heading">
-          <div className="directory-title"><h1>Upcoming Events</h1></div>
+          <div className="directory-title"><h2>Upcoming Events</h2></div>
           <div className="directory-controls">
             <div className="events-tools">
               <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events" aria-label="Search events" /></label>
