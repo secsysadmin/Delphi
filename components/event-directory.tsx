@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Search, Users } from "lucide-react";
 import { eventPhase, formatDate } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
@@ -28,6 +28,7 @@ export function EventDirectory() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
   const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
   const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
   const eventCardRefs = useRef(new Map<string, HTMLElement>());
@@ -38,7 +39,10 @@ export function EventDirectory() {
     fetch("/api/events").then((response) => response.json()).then((data) => setEvents(data.events ?? [])).finally(() => setLoading(false));
   }, []);
 
-  const hydrated = useSyncExternalStore(() => () => {}, () => true, () => false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setHydrated(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const visible = useMemo(() => {
     const normalized = query.toLowerCase().trim();
@@ -151,7 +155,7 @@ export function EventDirectory() {
             <a className="directory-hero__link" href="#event-calendar" onClick={scrollToCalendar}>Browse the calendar <ArrowRight size={18} /></a>
           </div>
           <div className="directory-hero__next" aria-live="polite">
-            {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
+            {nextEvent ? <Link href={`/events/${nextEvent.slug}#event-detail`}>
               <span>Next on the calendar</span>
               <strong>{nextEvent.title}</strong>
               <p><CalendarDays size={17} />{formatDate(nextEvent.startAt, true)}</p>

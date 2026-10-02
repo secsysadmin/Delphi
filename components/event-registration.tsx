@@ -49,6 +49,12 @@ export function EventRegistration({ slug }: { slug: string }) {
     }).catch((reason) => setError(reason.message)).finally(() => setLoading(false));
   }, [slug]);
 
+  useEffect(() => {
+    if (!event || window.location.hash !== "#event-detail") return;
+    const frame = requestAnimationFrame(() => document.getElementById("event-detail")?.scrollIntoView({ block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, [event]);
+
   const selectedSlot = useMemo(() => event?.slots.find((slot) => slot.id === slotId), [event, slotId]);
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
@@ -92,7 +98,7 @@ export function EventRegistration({ slug }: { slug: string }) {
 
   return (
     <>
-      <section className="event-detail-hero" style={{ "--event-accent": event.accentColor } as React.CSSProperties}>
+      <section id="event-detail" className="event-detail-hero" style={{ "--event-accent": event.accentColor } as React.CSSProperties}>
         <div className="shell"><Link href="/" className="back-link"><ArrowLeft size={17} /> All events</Link><span className="eyebrow eyebrow--light">SEC Event</span><h1>{event.title}</h1><p>{event.summary}</p></div>
       </section>
       <div className="shell event-detail-layout">
