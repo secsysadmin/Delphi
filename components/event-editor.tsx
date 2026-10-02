@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, Copy, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { EventInput, FormField, QuestionType } from "@/types";
@@ -31,23 +31,66 @@ export function EventEditor({ eventId }: { eventId?: string }) {
   const [loading, setLoading] = useState(Boolean(eventId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [draftId, setDraftId] = useState(eventId);
+  const [autosaveState, setAutosaveState] = useState<"idle" | "pending" | "saving" | "saved" | "error">("idle");
+  const [autosaveTick, setAutosaveTick] = useState(0);
+  const draftIdRef = useRef(eventId);
+  const hasUserEditsRef = useRef(false);
+  const creatingDraftRef = useRef(false);
+  const revisionRef = useRef(0);
 
   useEffect(() => {
     if (!eventId) return;
     fetch(`/api/events/${eventId}?admin=1`).then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error); return data.event; }).then((data) => setEvent({ ...data, startAt: localInput(data.startAt), endAt: localInput(data.endAt), registrationOpenAt: localInput(data.registrationOpenAt), registrationCloseAt: localInput(data.registrationCloseAt), slots: data.slots.map((slot: EventInput["slots"][number]) => ({ ...slot, startAt: localInput(slot.startAt), endAt: localInput(slot.endAt) })) })).catch((reason) => setError(reason.message)).finally(() => setLoading(false));
   }, [eventId]);
 
-  const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => setEvent((current) => ({ ...current, [key]: value }));
+  const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => {
+    hasUserEditsRef.current = true;
+    revisionRef.current += 1;
+    setEvent((current) => ({ ...current, [key]: value }));
+  };
   const updateField = (index: number, values: Partial<FormField>) => set("formFields", event.formFields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...values } : field));
   const moveField = (index: number, direction: -1 | 1) => { const next = [...event.formFields]; const target = index + direction; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; set("formFields", next); };
   const updateSlot = (index: number, values: Partial<EventInput["slots"][number]>) => set("slots", event.slots.map((slot, slotIndex) => slotIndex === index ? { ...slot, ...values } : slot));
   const addSlot = () => set("slots", [...event.slots, { id: crypto.randomUUID(), label: `Session ${event.slots.length + 1}`, startAt: event.startAt, endAt: event.endAt, location: event.location, capacity: 30, confirmationSubject: "", confirmationBody: "", accentColor: event.accentColor }]);
   const duplicateSlot = (index: number) => { const slot = event.slots[index]; set("slots", [...event.slots.slice(0, index + 1), { ...slot, id: crypto.randomUUID(), label: `${slot.label} copy` }, ...event.slots.slice(index + 1)]); };
 
+  const toPayload = (source: EventInput, status = source.status) => ({ ...source, status, startAt: new Date(source.startAt).toISOString(), endAt: new Date(source.endAt).toISOString(), registrationOpenAt: new Date(source.registrationOpenAt).toISOString(), registrationCloseAt: new Date(source.registrationCloseAt).toISOString(), slots: source.slots.map((slot) => ({ ...slot, startAt: new Date(slot.startAt).toISOString(), endAt: new Date(slot.endAt).toISOString() })) });
+
+  useEffect(() => {
+    if (!hasUserEditsRef.current || event.status !== "draft" || !event.title.trim() || saving) return;
+    if (!draftIdRef.current && creatingDraftRef.current) return;
+    const revision = revisionRef.current;
+    const snapshot = event;
+    setAutosaveState("pending");
+    const timer = window.setTimeout(async () => {
+      setAutosaveState("saving");
+      if (!draftIdRef.current) creatingDraftRef.current = true;
+      try {
+        const id = draftIdRef.current;
+        const response = await fetch(id ? `/api/events/${id}` : "/api/events", { method: id ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(toPayload(snapshot, "draft")) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not autosave the draft.");
+        if (!draftIdRef.current) {
+          draftIdRef.current = data.event.id;
+          setDraftId(data.event.id);
+          router.replace(`/admin/events/${data.event.id}/edit`);
+        }
+        setAutosaveState("saved");
+      } catch {
+        setAutosaveState("error");
+      } finally {
+        creatingDraftRef.current = false;
+        if (revisionRef.current !== revision) setAutosaveTick((value) => value + 1);
+      }
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [autosaveTick, event, router, saving]);
+
   async function save(status?: EventInput["status"]) {
     setSaving(true); setError("");
-    const payload = { ...event, status: status ?? event.status, startAt: new Date(event.startAt).toISOString(), endAt: new Date(event.endAt).toISOString(), registrationOpenAt: new Date(event.registrationOpenAt).toISOString(), registrationCloseAt: new Date(event.registrationCloseAt).toISOString(), slots: event.slots.map((slot) => ({ ...slot, startAt: new Date(slot.startAt).toISOString(), endAt: new Date(slot.endAt).toISOString() })) };
-    const response = await fetch(eventId ? `/api/events/${eventId}` : "/api/events", { method: eventId ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const id = draftIdRef.current;
+    const response = await fetch(id ? `/api/events/${id}` : "/api/events", { method: id ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(toPayload(event, status)) });
     const data = await response.json(); setSaving(false);
     if (!response.ok) return setError(data.error || "Could not save event.");
     router.push("/admin"); router.refresh();
@@ -60,7 +103,7 @@ export function EventEditor({ eventId }: { eventId?: string }) {
 
   if (loading) return <div className="shell page-loading">Loading event…</div>;
   return <div className="shell editor-shell">
-    <div className="editor-head"><div><Link href="/admin" className="back-link back-link--dark"><ArrowLeft /> Dashboard</Link><span className="eyebrow">{eventId ? "Edit event" : "New event"}</span><h1>{eventId ? event.title : "Create an event"}</h1><p>Build the event, registration form, sessions, and confirmation messages in one place.</p></div><div className="editor-actions"><button className="button button--secondary" onClick={() => save("draft")} disabled={saving}><Save /> Save draft</button><button className="button button--primary" onClick={() => save("published")} disabled={saving}>{saving ? "Saving…" : event.status === "published" ? "Save changes" : "Publish event"}</button></div></div>
+    <div className="editor-head"><div><Link href="/admin" className="back-link back-link--dark"><ArrowLeft /> Dashboard</Link><span className="eyebrow">{draftId ? "Edit event" : "New event"}</span><h1>{draftId ? event.title : "Create an event"}</h1><p>Build the event, registration form, sessions, and confirmation messages in one place.</p></div><div className="editor-actions">{event.status === "draft" && <span className={`autosave-status autosave-status--${autosaveState}`} aria-live="polite">{autosaveState === "pending" ? "Draft pending" : autosaveState === "saving" ? "Saving draft…" : autosaveState === "saved" ? "Draft saved" : autosaveState === "error" ? "Autosave failed" : "Drafts save automatically"}</span>}<button className="button button--secondary" onClick={() => save("draft")} disabled={saving}><Save /> Save draft</button><button className="button button--primary" onClick={() => save("published")} disabled={saving}>{saving ? "Saving…" : event.status === "published" ? "Save changes" : "Publish event"}</button></div></div>
     {error && <div className="form-error editor-error">{error}</div>}
     <div className="editor-layout"><aside className="editor-nav"><a href="#details">Event details</a><a href="#registration">Registration settings</a><a href="#slots">Time slots</a><a href="#form">Form builder</a><a href="#email">Confirmation email</a></aside><div className="editor-sections">
       <EditorSection id="details" number="01" title="Event details" description="The information students see before they register.">

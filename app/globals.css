@@ -213,6 +213,11 @@ label > small { color: var(--muted); font-weight: 500; }
 .editor-head { display: flex; justify-content: space-between; align-items: end; gap: 30px; margin-bottom: 30px; }
 .editor-head .back-link { margin-bottom: 24px; }
 .editor-actions, .editor-bottom-actions > div { display: flex; gap: 10px; }
+.editor-actions { align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.autosave-status { margin-right: 4px; color: var(--muted); font-size: .74rem; }
+.autosave-status--saving { color: var(--maroon); }
+.autosave-status--saved { color: var(--green); }
+.autosave-status--error { color: #9b2529; }
 .editor-layout { display: grid; grid-template-columns: 205px 1fr; gap: 28px; align-items: start; }
 .editor-nav { position: sticky; top: 20px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: white; }
 .editor-nav a { border-radius: 4px; padding: 10px 11px; color: var(--muted); font-size: .77rem; font-weight: 700; }
