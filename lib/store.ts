@@ -31,6 +31,7 @@ function mapEvent(row: Record<string, unknown>, slots: EventSlot[] = []): Regist
     status: row.status as RegistrationEvent["status"],
     capacityMode: row.capacityMode as RegistrationEvent["capacityMode"],
     capacity,
+    tamuEmailOnly: Boolean(row.tamuEmailOnly),
     sortOrder: Number(row.sortOrder ?? 0),
     accentColor: String(row.accentColor ?? "#500000"),
     formFields: (row.formFields ?? []) as FormField[],
@@ -69,7 +70,7 @@ async function dbEvents(): Promise<RegistrationEvent[]> {
       e.start_at as "startAt", e.end_at as "endAt",
       e.registration_open_at as "registrationOpenAt",
       e.registration_close_at as "registrationCloseAt", e.status,
-      e.capacity_mode as "capacityMode", e.capacity, e.sort_order as "sortOrder",
+      e.capacity_mode as "capacityMode", e.capacity, e.tamu_email_only as "tamuEmailOnly", e.sort_order as "sortOrder",
       e.accent_color as "accentColor", e.form_fields as "formFields",
       e.confirmation_subject as "confirmationSubject", e.confirmation_body as "confirmationBody",
       e.created_at as "createdAt", e.updated_at as "updatedAt",
@@ -123,6 +124,7 @@ function cleanInput(input: EventInput): EventInput {
     location: String(input.location ?? "").trim(),
     accentColor: /^#[0-9a-f]{6}$/i.test(input.accentColor) ? input.accentColor : "#500000",
     capacity: input.capacityMode === "event" ? Number(input.capacity) : null,
+    tamuEmailOnly: Boolean(input.tamuEmailOnly),
     sortOrder: Number(input.sortOrder ?? 0),
     formFields: (input.formFields ?? []).map((field, index) => ({ ...field, id: field.id || `field-${Date.now()}-${index}`, label: field.label.trim() })),
     slots: (input.slots ?? []).map((slot, index) => ({ ...slot, id: slot.id || randomUUID(), label: slot.label.trim() || `Session ${index + 1}`, capacity: input.capacityMode === "slot" ? Number(slot.capacity) || null : null })),
@@ -157,17 +159,17 @@ export async function saveEvent(rawInput: EventInput, id?: string) {
   await sql.begin(async (tx) => {
     await tx`
       insert into sec_registration.events (id, slug, title, summary, description, location, start_at, end_at,
-        registration_open_at, registration_close_at, status, capacity_mode, capacity, sort_order,
+        registration_open_at, registration_close_at, status, capacity_mode, capacity, tamu_email_only, sort_order,
         accent_color, form_fields, confirmation_subject, confirmation_body, updated_at)
       values (${eventId}, ${input.slug}, ${input.title}, ${input.summary}, ${input.description}, ${input.location},
         ${input.startAt}, ${input.endAt}, ${input.registrationOpenAt}, ${input.registrationCloseAt}, ${input.status},
-        ${input.capacityMode}, ${input.capacity}, ${input.sortOrder}, ${input.accentColor},
+        ${input.capacityMode}, ${input.capacity}, ${input.tamuEmailOnly}, ${input.sortOrder}, ${input.accentColor},
         ${tx.json(input.formFields as never)}, ${input.confirmationSubject}, ${input.confirmationBody}, now())
       on conflict (id) do update set slug = excluded.slug, title = excluded.title, summary = excluded.summary,
         description = excluded.description, location = excluded.location, start_at = excluded.start_at,
         end_at = excluded.end_at, registration_open_at = excluded.registration_open_at,
         registration_close_at = excluded.registration_close_at, status = excluded.status,
-        capacity_mode = excluded.capacity_mode, capacity = excluded.capacity, sort_order = excluded.sort_order,
+        capacity_mode = excluded.capacity_mode, capacity = excluded.capacity, tamu_email_only = excluded.tamu_email_only, sort_order = excluded.sort_order,
         accent_color = excluded.accent_color, form_fields = excluded.form_fields,
         confirmation_subject = excluded.confirmation_subject, confirmation_body = excluded.confirmation_body,
         updated_at = now()
@@ -265,6 +267,9 @@ export async function createRegistration(eventId: string, input: RegistrationInp
   if (new Date(event.registrationCloseAt).getTime() < now) throw new Error("Registration is closed.");
   if (!input.firstName?.trim() || !input.lastName?.trim()) throw new Error("First and last name are required.");
   if (!/^\S+@\S+\.\S+$/.test(input.email ?? "")) throw new Error("Enter a valid email address.");
+  if (event.tamuEmailOnly && !input.email.trim().toLowerCase().endsWith("@tamu.edu")) {
+    throw new Error("This event is only open to @tamu.edu email addresses.");
+  }
   const slot = input.slotId ? event.slots.find((item) => item.id === input.slotId) : null;
   if (event.slots.length && !slot) throw new Error("Select a time slot.");
   for (const field of event.formFields) {

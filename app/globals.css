@@ -511,6 +511,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .admin-users-heading h1 { margin: 0 0 10px; font-size: clamp(2.75rem, 4.2vw, 4rem); font-weight: 500; letter-spacing: -.04em; line-height: .98; }
 .admin-users-heading p { margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.6; }
 .admin-users-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 24px; align-items: start; }
+.admin-user-actions { display: grid; gap: 24px; }
 .admin-user-list { min-height: 250px; }
 .admin-user-list__head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; border-bottom: 1px solid var(--line); padding: 20px 24px; }
 .admin-user-list h2, .admin-user-form h2 { margin: 0; font-family: var(--font-serif), Georgia, serif; font-size: 1.65rem; font-weight: 500; letter-spacing: -.025em; }

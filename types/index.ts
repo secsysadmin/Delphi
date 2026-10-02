@@ -48,6 +48,7 @@ export type RegistrationEvent = {
   status: "draft" | "published" | "archived";
   capacityMode: "event" | "slot" | "unlimited";
   capacity: number | null;
+  tamuEmailOnly: boolean;
   sortOrder: number;
   accentColor: string;
   formFields: FormField[];

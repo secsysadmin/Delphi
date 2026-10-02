@@ -86,3 +86,13 @@ export async function deleteAdminUser(id: string, currentEmail: string) {
   if (Number(count) <= 1) throw new Error("At least one administrator must remain.");
   await sql`delete from sec_registration.admin_users where id = ${id}`;
 }
+
+export async function updateAdminPassword(email: string, oldPassword: string, newPassword: string) {
+  if (!sql) throw new Error("A database connection is required to change an administrator password.");
+  if (newPassword.length < 8) throw new Error("New passwords must be at least 8 characters.");
+  const user = await getAdminUserByEmail(email);
+  if (!user || !verifyAdminPassword(oldPassword, user.passwordHash)) {
+    throw new Error("Your current password is incorrect.");
+  }
+  await sql`update sec_registration.admin_users set password_hash = ${hashAdminPassword(newPassword)} where id = ${user.id}`;
+}
