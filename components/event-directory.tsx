@@ -12,7 +12,6 @@ export function EventDirectory() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
   const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
-  const [motionReady, setMotionReady] = useState(false);
   const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
   const eventCardRefs = useRef(new Map<string, HTMLElement>());
   const revealedEventIdsRef = useRef(new Set<string>());
@@ -38,7 +37,6 @@ export function EventDirectory() {
       setRevealedEventIds(new Set(revealedEventIdsRef.current));
       return;
     }
-    setMotionReady(true);
     const queuedIds = new Set<string>();
     const queue: string[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -114,7 +112,7 @@ export function EventDirectory() {
               const soldOut = event.capacityMode === "event" ? event.remaining === 0 : Boolean(event.slots.length && event.slots.every((slot) => slot.remaining === 0));
               return (
                 <article
-                  className={`event-card ${motionReady ? "event-card--motion-ready" : ""} ${revealedEventIds.has(event.id) ? "event-card--revealed" : ""}`}
+                  className={`event-card event-card--motion-ready ${revealedEventIds.has(event.id) ? "event-card--revealed" : ""}`}
                   data-event-id={event.id}
                   key={event.id}
                   ref={(node) => { if (node) eventCardRefs.current.set(event.id, node); else eventCardRefs.current.delete(event.id); }}
