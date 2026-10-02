@@ -1,4 +1,4 @@
-import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
 import { Resend } from "resend";
 import type { EventSlot, Registration, RegistrationEvent } from "@/types";
 import { formatDate, formatTime } from "@/lib/utils";
@@ -14,18 +14,51 @@ function emailProvider() {
   return ses ? "ses" : process.env.RESEND_API_KEY ? "resend" : null;
 }
 
+function mailboxAddress(value: string) {
+  return value.match(/<([^>]+)>/)?.[1] ?? value;
+}
+
+function cleanHeader(value: string) {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function base64Mime(value: string) {
+  return Buffer.from(value, "utf8").toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
+}
+
+function rawMessage({ from, to, subject, html, text }: { from: string; to: string; subject: string; html: string; text: string }) {
+  const boundary = "=_SEC_Registration_Boundary";
+  return [
+    `From: ${cleanHeader(from)}`,
+    `To: ${cleanHeader(to)}`,
+    `Subject: ${cleanHeader(subject)}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/alternative; boundary=\"${boundary}\"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    base64Mime(text),
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    base64Mime(html),
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+}
+
 async function deliverEmail({ to, subject, html, text }: { to: string; subject: string; html: string; text: string }) {
   const provider = emailProvider();
   if (!provider) return null;
   const from = process.env.EMAIL_FROM || defaultFrom;
   if (provider === "ses") {
-    const response = await ses!.send(new SendEmailCommand({
-      Source: from,
-      Destination: { ToAddresses: [to] },
-      Message: {
-        Subject: { Charset: "UTF-8", Data: subject },
-        Body: { Html: { Charset: "UTF-8", Data: html }, Text: { Charset: "UTF-8", Data: text } },
-      },
+    const response = await ses!.send(new SendRawEmailCommand({
+      Source: mailboxAddress(from),
+      Destinations: [to],
+      RawMessage: { Data: Buffer.from(rawMessage({ from, to, subject, html, text })) },
     }));
     return response.MessageId ?? null;
   }
