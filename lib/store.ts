@@ -227,6 +227,27 @@ export async function getRegistrations(eventId: string) {
   return rows.map((row) => ({ ...row, createdAt: toIso(row.createdAt) })) as Registration[];
 }
 
+export async function deleteRegistration(eventId: string, registrationId: string) {
+  if (!sql) {
+    const index = demo.registrations.findIndex((registration) => registration.id === registrationId && registration.eventId === eventId);
+    if (index < 0) return false;
+    const [registration] = demo.registrations.splice(index, 1);
+    const event = demo.events.find((item) => item.id === eventId);
+    const slot = event?.slots.find((item) => item.id === registration.slotId);
+    if (event && registration.status !== "cancelled") {
+      event.registeredCount = Math.max(0, event.registeredCount - 1);
+      if (event.remaining !== null) event.remaining += 1;
+    }
+    if (slot && registration.status !== "cancelled") {
+      slot.registeredCount = Math.max(0, slot.registeredCount - 1);
+      if (slot.remaining !== null) slot.remaining += 1;
+    }
+    return true;
+  }
+  const deleted = await sql`delete from sec_registration.registrations where id = ${registrationId} and event_id = ${eventId} returning id`;
+  return deleted.length > 0;
+}
+
 type RegistrationInput = {
   slotId?: string | null;
   firstName: string;

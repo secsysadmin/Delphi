@@ -330,6 +330,7 @@ label > small { color: var(--muted); font-weight: 500; }
 
 /* Field Guide redesign */
 :root { --ink: #26221f; --paper: #f5f0e7; --sand: #e9dfd0; --line: #c9bdad; --maroon: #4d0710; --maroon-2: #721422; --green: #285e4d; --gold: #a6752d; --guide-shadow: 0 14px 34px rgba(55, 35, 19, .11); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 html { scroll-behavior: smooth; }
 html::selection { color: #fff8ee; background: var(--maroon); }
 body { background: var(--paper); color: var(--ink); letter-spacing: -.01em; }
@@ -506,6 +507,10 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .registrations-page .registrations-head p, .registrations-page .metric-card small, .registrations-page .registration-table th, .registrations-page .registration-table small { color: #514941; }
 .registrations-page > .back-link { color: var(--maroon); }
 .button--selection:disabled { border-color: #998b7c; color: #514941; background: transparent; opacity: 1; cursor: not-allowed; }
+.registration-table__actions { width: 1%; text-align: right; }
+.registration-delete { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid #9c4a45; color: #7b211d; background: transparent; }
+.registration-delete:hover { border-color: #7b211d; color: #fff8ef; background: #7b211d; }
+.registration-delete:disabled { opacity: .55; cursor: wait; }
 
 /* Event editor: one compact operational rhythm, carried through every workflow step. */
 .editor-head { gap: 42px; margin-bottom: 34px; }
