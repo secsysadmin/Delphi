@@ -142,7 +142,7 @@ export function EventDirectory() {
       <section className="directory-hero">
         <div className="shell directory-hero__inner">
           <div className="directory-hero__copy">
-            <h1>Plan your next SEC event.</h1>
+            <h1 aria-label="Plan your next SEC event.">{["Plan", "your", "next", "SEC", "event."].map((word, index) => <span key={word} style={{ "--word-index": index } as React.CSSProperties}>{word}{index < 4 && " "}</span>)}</h1>
             <p>Browse workshops, conversations, and hands-on sessions. Choose the event that fits, then register before its capacity closes.</p>
             <a className="directory-hero__link" href="#event-directory" onClick={scrollToDirectory}>Browse the calendar <ArrowRight size={18} /></a>
           </div>
