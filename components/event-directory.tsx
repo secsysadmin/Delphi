@@ -2,15 +2,32 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, Clock3, MapPin, Search, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Search, Users } from "lucide-react";
 import { eventPhase, formatDate } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
+
+const chicagoDateParts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
+const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
+
+function dayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function eventDayKey(date: string) {
+  const parts = Object.fromEntries(chicagoDateParts.formatToParts(new Date(date)).filter(({ type }) => type !== "literal").map(({ type, value }) => [type, value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function monthStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
 
 export function EventDirectory() {
   const [events, setEvents] = useState<RegistrationEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
+  const [calendarMonth, setCalendarMonth] = useState(() => monthStart(new Date()));
   const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
   const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
   const eventCardRefs = useRef(new Map<string, HTMLElement>());
@@ -30,6 +47,32 @@ export function EventDirectory() {
   }, [events, query, sort]);
 
   const nextEvent = useMemo(() => events.filter((event) => eventPhase(event) !== "past" && event.status === "published").sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [events]);
+  const firstCalendarMonth = useMemo(() => monthStart(new Date()), []);
+  const lastCalendarMonth = useMemo(() => new Date(firstCalendarMonth.getFullYear(), firstCalendarMonth.getMonth() + 11, 1), [firstCalendarMonth]);
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const dayCount = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+    return [...Array<Date | null>(firstDay.getDay()).fill(null), ...Array.from({ length: dayCount }, (_, index) => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1))];
+  }, [calendarMonth]);
+  const calendarEvents = useMemo(() => events.filter((event) => event.status === "published" && eventPhase(event) !== "past").reduce<Record<string, RegistrationEvent[]>>((byDay, event) => {
+    const key = eventDayKey(event.startAt);
+    (byDay[key] ??= []).push(event);
+    return byDay;
+  }, {}), [events]);
+  const isFirstCalendarMonth = calendarMonth.getTime() === firstCalendarMonth.getTime();
+  const isLastCalendarMonth = calendarMonth.getTime() === lastCalendarMonth.getTime();
+
+  function scrollToDirectory(event: React.MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const directory = document.getElementById("event-directory");
+    if (!directory) return;
+    const root = document.documentElement;
+    const previousScrollBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    window.scrollTo(0, Math.max(0, directory.getBoundingClientRect().top + window.scrollY - 32));
+    root.style.scrollBehavior = previousScrollBehavior;
+    window.history.replaceState(null, "", "#event-directory");
+  }
 
   useEffect(() => {
     if (!visible.length) return;
@@ -101,7 +144,7 @@ export function EventDirectory() {
           <div className="directory-hero__copy">
             <h1>Plan your next SEC event.</h1>
             <p>Browse workshops, conversations, and hands-on sessions. Choose the event that fits, then register before its capacity closes.</p>
-            <a className="directory-hero__link" href="#event-directory">Browse the calendar <ArrowRight size={18} /></a>
+            <a className="directory-hero__link" href="#event-directory" onClick={scrollToDirectory}>Browse the calendar <ArrowRight size={18} /></a>
           </div>
           <div className="directory-hero__next" aria-live="polite">
             {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
@@ -147,6 +190,32 @@ export function EventDirectory() {
             })}
           </div>
         ) : <div className="empty-state"><CalendarDays size={36} /><h3>No matching events</h3><p>Try another search, or check back soon for new opportunities.</p></div>}
+      </section>
+      <section className="calendar-section" aria-labelledby="calendar-heading">
+        <div className="shell">
+          <div className="calendar-section__head">
+            <div><h2 id="calendar-heading">Plan ahead</h2><p>Browse SEC events through the next twelve months.</p></div>
+            <div className="calendar-controls">
+              <button type="button" onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))} disabled={isFirstCalendarMonth} aria-label="Previous month"><ChevronLeft size={19} /></button>
+              <h3 aria-live="polite">{monthLabel.format(calendarMonth)}</h3>
+              <button type="button" onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))} disabled={isLastCalendarMonth} aria-label="Next month"><ChevronRight size={19} /></button>
+            </div>
+          </div>
+          <div className="calendar-grid" role="grid" aria-label={`${monthLabel.format(calendarMonth)} event calendar`}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
+            {calendarDays.map((day, index) => {
+              const dayEvents = day ? calendarEvents[dayKey(day)] ?? [] : [];
+              return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${monthLabel.format(day)} ${day.getDate()}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
+                {day && <span className="calendar-grid__date">{day.getDate()}</span>}
+                {dayEvents.length > 0 && <span className="calendar-grid__events">{dayEvents.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatDate(event.startAt, true)}, ${event.location}`}>
+                  <span aria-hidden="true" />
+                  <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatDate(event.startAt, true)} · {event.location}</small></span>
+                </Link>)}</span>}
+              </div>;
+            })}
+          </div>
+          <p className="calendar-note">Select an event marker to view details and register.</p>
+        </div>
       </section>
     </>
   );
