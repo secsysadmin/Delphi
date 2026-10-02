@@ -225,8 +225,10 @@ label > small { color: var(--muted); font-weight: 500; }
 .editor-section__head p { margin: 0; color: var(--muted); font-size: .78rem; }
 .editor-section__body { padding: 26px; }
 .editor-section label > small:last-child { align-self: end; }
-.color-field { max-width: 300px; display: grid !important; grid-template-columns: 46px 1fr; align-items: end; }
-.color-field input[type="color"] { height: 44px; padding: 4px; }
+.color-field { max-width: 440px; display: grid !important; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 14px; }
+.color-field__controls { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; min-width: 0; }
+.color-field input[type="color"] { width: 58px; height: 44px; padding: 4px; }
+.color-field__value { min-width: 0; width: 100%; }
 .stack-label { display: flex; flex-direction: column; gap: 8px; margin: 22px 0; font-size: .82rem; font-weight: 750; }
 .segmented { width: max-content; display: flex; border: 1px solid var(--line); border-radius: 6px; padding: 3px; background: #f3f0ec; }
 .segmented button { border: 0; border-radius: 4px; padding: 9px 15px; color: var(--muted); background: transparent; font-size: .78rem; font-weight: 750; }
