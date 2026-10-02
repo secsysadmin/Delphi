@@ -355,6 +355,7 @@ body::before { position: fixed; z-index: -1; inset: 0; content: ""; pointer-even
 .directory-hero__inner { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .72fr); gap: 82px; align-items: end; padding: 64px 0 58px; }
 .directory-hero__copy h1 { max-width: 720px; margin: 0 0 20px; font-family: var(--font-serif), Georgia, serif; font-size: clamp(3.5rem, 5.8vw, 5.8rem); font-weight: 500; line-height: .92; letter-spacing: -.052em; }
 .directory-hero__copy h1 span { display: inline-block; opacity: 0; transform: translateX(-24px); animation: hero-word-reveal 440ms cubic-bezier(.16, 1, .3, 1) calc(var(--word-index) * 76ms) both; }
+.directory-hero__copy h1 span:not(:last-child) { margin-right: .18em; }
 .directory-hero__copy > p { max-width: 57ch; margin: 0; color: #554d46; font-size: 1.02rem; line-height: 1.6; }
 .directory-hero__link { display: inline-flex; gap: 8px; align-items: center; margin-top: 26px; border-bottom: 1px solid currentColor; padding-bottom: 4px; color: var(--maroon); font-size: .76rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .directory-hero__link svg, .directory-hero__next em svg { transition: transform .2s ease; }
@@ -413,7 +414,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 @media (prefers-reduced-motion: reduce) { .directory-hero__copy h1 span { animation: none; opacity: 1; transform: none; } }
 .empty-state { min-height: 280px; border-block: 1px solid var(--line); }
 
-.calendar-section { border-top: 1px solid var(--line); padding: 78px 0 96px; background: rgba(233,223,208,.38); }
+.calendar-section { scroll-margin-top: 32px; border-top: 1px solid var(--line); padding: 78px 0 96px; background: rgba(233,223,208,.38); }
 .calendar-section__head { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 31px; }
 .calendar-section__head h2 { margin: 0 0 10px; font-family: var(--font-serif), Georgia, serif; font-size: clamp(2.75rem, 4vw, 4.15rem); font-weight: 500; line-height: .98; letter-spacing: -.04em; }
 .calendar-section__head p { margin: 0; color: #554d46; }

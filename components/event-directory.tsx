@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Search, Users } from "lucide-react";
 import { eventPhase, formatDate } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
@@ -27,7 +27,7 @@ export function EventDirectory() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
-  const [calendarMonth, setCalendarMonth] = useState(() => monthStart(new Date()));
+  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
   const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
   const eventCardRefs = useRef(new Map<string, HTMLElement>());
@@ -38,6 +38,8 @@ export function EventDirectory() {
     fetch("/api/events").then((response) => response.json()).then((data) => setEvents(data.events ?? [])).finally(() => setLoading(false));
   }, []);
 
+  const hydrated = useSyncExternalStore(() => () => {}, () => true, () => false);
+
   const visible = useMemo(() => {
     const normalized = query.toLowerCase().trim();
     const next = events.filter((event) => eventPhase(event) !== "past" && event.status === "published" && (!normalized || `${event.title} ${event.summary} ${event.location}`.toLowerCase().includes(normalized)));
@@ -47,9 +49,11 @@ export function EventDirectory() {
   }, [events, query, sort]);
 
   const nextEvent = useMemo(() => events.filter((event) => eventPhase(event) !== "past" && event.status === "published").sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [events]);
-  const firstCalendarMonth = useMemo(() => monthStart(new Date()), []);
-  const lastCalendarMonth = useMemo(() => new Date(firstCalendarMonth.getFullYear(), firstCalendarMonth.getMonth() + 11, 1), [firstCalendarMonth]);
+  const firstCalendarMonth = useMemo(() => hydrated ? monthStart(new Date()) : null, [hydrated]);
+  const calendarMonth = useMemo(() => firstCalendarMonth ? new Date(firstCalendarMonth.getFullYear(), firstCalendarMonth.getMonth() + calendarMonthOffset, 1) : null, [firstCalendarMonth, calendarMonthOffset]);
+  const lastCalendarMonth = useMemo(() => firstCalendarMonth ? new Date(firstCalendarMonth.getFullYear(), firstCalendarMonth.getMonth() + 11, 1) : null, [firstCalendarMonth]);
   const calendarDays = useMemo(() => {
+    if (!calendarMonth) return [];
     const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
     const dayCount = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
     return [...Array<Date | null>(firstDay.getDay()).fill(null), ...Array.from({ length: dayCount }, (_, index) => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1))];
@@ -59,19 +63,19 @@ export function EventDirectory() {
     (byDay[key] ??= []).push(event);
     return byDay;
   }, {}), [events]);
-  const isFirstCalendarMonth = calendarMonth.getTime() === firstCalendarMonth.getTime();
-  const isLastCalendarMonth = calendarMonth.getTime() === lastCalendarMonth.getTime();
+  const isFirstCalendarMonth = Boolean(calendarMonth && firstCalendarMonth && calendarMonth.getTime() === firstCalendarMonth.getTime());
+  const isLastCalendarMonth = Boolean(calendarMonth && lastCalendarMonth && calendarMonth.getTime() === lastCalendarMonth.getTime());
 
-  function scrollToDirectory(event: React.MouseEvent<HTMLAnchorElement>) {
+  function scrollToCalendar(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
-    const directory = document.getElementById("event-directory");
-    if (!directory) return;
+    const calendar = document.getElementById("event-calendar");
+    if (!calendar) return;
     const root = document.documentElement;
     const previousScrollBehavior = root.style.scrollBehavior;
     root.style.scrollBehavior = "auto";
-    window.scrollTo(0, Math.max(0, directory.getBoundingClientRect().top + window.scrollY - 32));
+    window.scrollTo(0, Math.max(0, calendar.getBoundingClientRect().top + window.scrollY - 32));
     root.style.scrollBehavior = previousScrollBehavior;
-    window.history.replaceState(null, "", "#event-directory");
+    window.history.replaceState(null, "", "#event-calendar");
   }
 
   useEffect(() => {
@@ -142,9 +146,9 @@ export function EventDirectory() {
       <section className="directory-hero">
         <div className="shell directory-hero__inner">
           <div className="directory-hero__copy">
-            <h1 aria-label="Plan your next SEC event.">{["Plan", "your", "next", "SEC", "event."].map((word, index) => <span key={word} style={{ "--word-index": index } as React.CSSProperties}>{word}{index < 4 && " "}</span>)}</h1>
+            <h1 aria-label="Plan your next SEC event.">{["Plan", "your", "next", "SEC", "event."].map((word, index) => <span key={word} style={{ "--word-index": index } as React.CSSProperties}>{word}</span>)}</h1>
             <p>Browse workshops, conversations, and hands-on sessions. Choose the event that fits, then register before its capacity closes.</p>
-            <a className="directory-hero__link" href="#event-directory" onClick={scrollToDirectory}>Browse the calendar <ArrowRight size={18} /></a>
+            <a className="directory-hero__link" href="#event-calendar" onClick={scrollToCalendar}>Browse the calendar <ArrowRight size={18} /></a>
           </div>
           <div className="directory-hero__next" aria-live="polite">
             {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
@@ -191,17 +195,17 @@ export function EventDirectory() {
           </div>
         ) : <div className="empty-state"><CalendarDays size={36} /><h3>No matching events</h3><p>Try another search, or check back soon for new opportunities.</p></div>}
       </section>
-      <section className="calendar-section" aria-labelledby="calendar-heading">
+      <section id="event-calendar" className="calendar-section" aria-labelledby="calendar-heading">
         <div className="shell">
           <div className="calendar-section__head">
             <div><h2 id="calendar-heading">Plan ahead</h2><p>Browse SEC events through the next twelve months.</p></div>
             <div className="calendar-controls">
-              <button type="button" onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))} disabled={isFirstCalendarMonth} aria-label="Previous month"><ChevronLeft size={19} /></button>
-              <h3 aria-live="polite">{monthLabel.format(calendarMonth)}</h3>
-              <button type="button" onClick={() => setCalendarMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))} disabled={isLastCalendarMonth} aria-label="Next month"><ChevronRight size={19} /></button>
+              <button type="button" onClick={() => setCalendarMonthOffset((offset) => offset - 1)} disabled={!calendarMonth || isFirstCalendarMonth} aria-label="Previous month"><ChevronLeft size={19} /></button>
+              <h3 aria-live="polite">{calendarMonth ? monthLabel.format(calendarMonth) : "Calendar"}</h3>
+              <button type="button" onClick={() => setCalendarMonthOffset((offset) => offset + 1)} disabled={!calendarMonth || isLastCalendarMonth} aria-label="Next month"><ChevronRight size={19} /></button>
             </div>
           </div>
-          <div className="calendar-grid" role="grid" aria-label={`${monthLabel.format(calendarMonth)} event calendar`}>
+          <div className="calendar-grid" role="grid" aria-label={calendarMonth ? `${monthLabel.format(calendarMonth)} event calendar` : "Event calendar"}>
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
             {calendarDays.map((day, index) => {
               const dayEvents = day ? calendarEvents[dayKey(day)] ?? [] : [];
