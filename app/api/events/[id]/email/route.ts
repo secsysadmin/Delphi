@@ -11,9 +11,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!subject?.trim() || !body?.trim()) return NextResponse.json({ error: "Subject and message are required." }, { status: 400 });
     const [event, all] = await Promise.all([getEvent(id, true), getRegistrations(id)]);
     if (!event) return NextResponse.json({ error: "Event not found." }, { status: 404 });
-    const registrations = Array.isArray(registrationIds) && registrationIds.length
-      ? all.filter((item) => registrationIds.includes(item.id) && item.status === "confirmed")
-      : all.filter((item) => item.status === "confirmed");
+    if (!Array.isArray(registrationIds) || !registrationIds.length) return NextResponse.json({ error: "Select at least one confirmed recipient." }, { status: 400 });
+    const registrations = all.filter((item) => registrationIds.includes(item.id) && item.status === "confirmed");
     if (!registrations.length) return NextResponse.json({ error: "No confirmed recipients selected." }, { status: 400 });
     const result = await sendBroadcast(registrations, event, subject, body);
     return NextResponse.json(result);

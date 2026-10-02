@@ -502,6 +502,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .event-table__header, .tabs button, .table-tools, .row-actions { font-family: var(--font-sans), Arial, sans-serif; }
 .row-actions a:hover, .row-actions button:hover { border-color: var(--maroon); color: var(--maroon); background: rgba(80, 0, 0, .045); }
 
+/* Registration operations: supporting data must remain legible at a glance. */
+.registrations-page .registrations-head p, .registrations-page .metric-card small, .registrations-page .registration-table th, .registrations-page .registration-table small { color: #514941; }
+.registrations-page > .back-link { color: var(--maroon); }
+.button--selection:disabled { border-color: #998b7c; color: #514941; background: transparent; opacity: 1; cursor: not-allowed; }
+
 /* Event editor: one compact operational rhythm, carried through every workflow step. */
 .editor-head { gap: 42px; margin-bottom: 34px; }
 .editor-head .back-link { color: var(--maroon); }
