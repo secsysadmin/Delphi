@@ -1,0 +1,97 @@
+{
+  "title": "Choose the new SEC visual world",
+  "question": "The public event directory should feel unmistakably SEC while making the next event easy to spot and join.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "The Gathering Hall",
+      "kicker": "THE ROLL",
+      "lineage": "an indoor light installation and campus gathering place",
+      "thesis": "A long, warm hall draws students toward the one event that matters next.",
+      "palette": ["#500000", "#f4eee4", "#241f1a", "#b8892d"],
+      "materials": ["maroon light", "matte paper", "brass wayfinding"],
+      "viewport": "A horizon-like event beacon leads into a dense, editorial program board rather than a generic card grid.",
+      "risk": "Needs restraint so the atmosphere never competes with dates, capacity, or registration actions.",
+      "raised": [
+        {"from": "campus wayfinding", "raise": "Every status, date, and route uses a precise, high-contrast information hierarchy."},
+        {"from": "studio pin-up wall", "raise": "Event modules use varied editorial scale instead of a row of identical cards."}
+      ],
+      "wireframe": {"cols": 12, "rows": 10, "regions": [
+        {"label": "identity / nav", "x": 0, "y": 0, "w": 12, "h": 1, "accent": true},
+        {"label": "event horizon", "x": 0, "y": 1, "w": 12, "h": 3, "accent": true},
+        {"label": "featured event", "x": 0, "y": 4, "w": 7, "h": 3, "accent": true},
+        {"label": "filters + live availability", "x": 7, "y": 4, "w": 5, "h": 3},
+        {"label": "program ledger", "x": 0, "y": 7, "w": 12, "h": 3}
+      ]}
+    },
+    {
+      "id": "model-pick",
+      "label": "The Engineering Field Guide",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "a well-used campus field notebook and department wayfinding system",
+      "thesis": "The event catalog becomes a confident, navigable guide to the semester’s opportunities.",
+      "palette": ["#500000", "#f8f5ef", "#24201d", "#2f6d58"],
+      "materials": ["paper stock", "fine rules", "campus map marks"],
+      "viewport": "A decisive title and one featured opportunity sit above a structured event index with practical route cues.",
+      "risk": "Familiar institutional language can feel too quiet if the editorial scale is not brave enough.",
+      "wireframe": {"cols": 12, "rows": 10, "regions": [
+        {"label": "masthead", "x": 0, "y": 0, "w": 12, "h": 1, "accent": true},
+        {"label": "feature story", "x": 0, "y": 1, "w": 8, "h": 4, "accent": true},
+        {"label": "semester key", "x": 8, "y": 1, "w": 4, "h": 4},
+        {"label": "event index", "x": 0, "y": 5, "w": 12, "h": 5}
+      ]}
+    },
+    {
+      "id": "challenger-neutral-proof",
+      "label": "Proof, Not Promises",
+      "verdict": "competitive",
+      "lineage": "high-craft contemporary product publishing",
+      "thesis": "Each opportunity is paired with the exact details that prove it is worth a student’s time.",
+      "palette": ["#f7f6f3", "#20201f", "#500000", "#b8892d"],
+      "materials": ["neutral field", "fine borders", "quiet annotations"],
+      "viewport": "A clean feature-and-proof split presents the next event beside capacity, time, and location facts.",
+      "case": "It is exceptionally clear, but loses some SEC specificity to the two grounded candidates.",
+      "risk": "Could become another polished software catalog if the institutional details are underplayed.",
+      "wireframe": {"cols": 12, "rows": 10, "regions": [
+        {"label": "quiet header", "x": 0, "y": 0, "w": 12, "h": 1},
+        {"label": "event claim", "x": 0, "y": 1, "w": 6, "h": 4, "accent": true},
+        {"label": "event proof", "x": 6, "y": 1, "w": 6, "h": 4},
+        {"label": "opportunity list", "x": 0, "y": 5, "w": 12, "h": 5}
+      ]}
+    },
+    {
+      "id": "challenger-sneaker-wall",
+      "label": "The Opportunity Archive",
+      "verdict": "declined",
+      "lineage": "a collector’s archive wall and labeled storage system",
+      "thesis": "Events stack as individual objects with a satisfying reveal.",
+      "palette": ["#8d2f1c", "#efe4d2", "#211f1d", "#b8892d"],
+      "materials": ["boxboard", "printed labels", "tissue paper"],
+      "viewport": "Event titles become stack labels that open into fuller registration detail.",
+      "case": "The interaction is memorable but does not serve rapid academic scheduling as clearly.",
+      "kept": "Commitment to making each event feel distinct rather than interchangeable.",
+      "risk": "The metaphor can overpower functional scanning.",
+      "wireframe": {"cols": 12, "rows": 10, "regions": [
+        {"label": "label wall", "x": 0, "y": 0, "w": 4, "h": 10, "accent": true},
+        {"label": "opened event", "x": 4, "y": 0, "w": 8, "h": 10}
+      ]}
+    }
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "buildPath": {"value": "code", "toggle": true},
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "A familiar university event directory, executed very cleanly.",
+    "palette": ["#ffffff", "#1f2937", "#500000"],
+    "materials": ["simple grid", "standard cards"],
+    "viewport": "Hero copy above equal event cards and a conventional filter row.",
+    "risk": "Clear but indistinguishable from most campus event sites.",
+    "wireframe": {"cols": 12, "rows": 10, "regions": [
+      {"label": "header", "x": 0, "y": 0, "w": 12, "h": 1},
+      {"label": "hero", "x": 0, "y": 1, "w": 12, "h": 3, "accent": true},
+      {"label": "equal cards", "x": 0, "y": 4, "w": 12, "h": 6}
+    ]}
+  },
+  "steer": true
+}

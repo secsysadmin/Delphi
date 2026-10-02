@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "title": "Design System: SEC Registration Hub",
+  "extensions": {
+    "colorMeta": {
+      "maroon": { "role": "primary", "displayName": "SEC Maroon", "canonical": "#4d0710", "tonalRamp": ["#2f0309", "#4d0710", "#721422"] },
+      "paper": { "role": "neutral", "displayName": "Field Paper", "canonical": "#f5f0e7", "tonalRamp": ["#e9dfd0", "#f5f0e7", "#fffaf2"] }
+    },
+    "motion": [{ "name": "reveal", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "One purposeful React Bits heading reveal." }],
+    "breakpoints": [{ "name": "compact", "value": "650px" }, { "name": "tablet", "value": "900px" }]
+  },
+  "narrative": {
+    "northStar": "The Engineering Field Guide",
+    "keyCharacteristics": ["editorial hierarchy", "paper material", "precise wayfinding", "flat functional surfaces"],
+    "dos": ["Use ruled layouts and square controls.", "Use maroon sparingly but decisively."],
+    "donts": ["Do not use generic rounded-card grids.", "Do not use more than two conspicuous effects per page."]
+  }
+}
