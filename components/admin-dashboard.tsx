@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, CalendarCheck, ChevronRight, Mail, Pencil, Plus, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarCheck, ChevronRight, Mail, Pencil, Plus, Search, Users } from "lucide-react";
 import { eventPhase, formatDate } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
 
@@ -45,7 +45,7 @@ export function AdminDashboard({ preview }: { preview: boolean }) {
   const registrations = active.reduce((sum, event) => sum + event.registeredCount, 0);
   return (
     <div className="admin-shell shell">
-      <div className="admin-title-row"><div><h1>Event dashboard</h1><p>Published events, registration activity, and outreach in one place.</p></div><Link className="button button--primary" href="/admin/events/new"><Plus size={18} /> New event</Link></div>
+      <div className="admin-title-row"><div><h1>Event dashboard</h1><p>Published events, registration activity, and outreach in one place.</p></div><div className="admin-actions">{!preview && <Link className="button button--secondary" href="/admin/users"><Users size={17} /> Manage admins</Link>}<Link className="button button--primary" href="/admin/events/new"><Plus size={18} /> New event</Link></div></div>
       <div className="admin-overview" aria-label="Dashboard summary">
         <p><strong>{active.length}</strong> active events <span aria-hidden="true">·</span> <strong>{registrations}</strong> registrations</p>
         {preview && <p className="admin-overview__preview"><strong>Preview mode.</strong> Local changes reset when the server restarts.</p>}

@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many attempts. Try again in 15 minutes." }, { status: 429 });
   }
   const { email, password } = await request.json() as { email?: string; password?: string };
-  if (!email || !password || !validAdminCredentials(email, password)) {
+  if (!email || !password || !(await validAdminCredentials(email, password))) {
     attempts.set(ip, { count: (current?.count ?? 0) + 1, resetAt: Date.now() + 15 * 60_000 });
     return NextResponse.json({ error: "Email or password is incorrect." }, { status: 401 });
   }

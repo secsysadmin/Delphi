@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { getAdminUserByEmail, verifyAdminPassword } from "@/lib/admin-users";
+import { hasDatabase } from "@/lib/db";
 
 const COOKIE_NAME = "sec_admin_session";
 const maxAge = 60 * 60 * 12;
@@ -12,7 +14,11 @@ function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
-export function validAdminCredentials(email: string, password: string) {
+export async function validAdminCredentials(email: string, password: string) {
+  if (hasDatabase) {
+    const admin = await getAdminUserByEmail(email);
+    return Boolean(admin && verifyAdminPassword(password, admin.passwordHash));
+  }
   const expectedEmail = process.env.ADMIN_EMAIL || "admin@sec.tamu.edu";
   const expectedPassword = process.env.ADMIN_PASSWORD || "gig-em";
   const leftEmail = Buffer.from(email.toLowerCase());
@@ -40,8 +46,25 @@ export function verifySessionValue(value?: string) {
   } catch { return false; }
 }
 
+function sessionEmail(value?: string) {
+  if (!verifySessionValue(value)) return null;
+  const [payload] = value!.split(".");
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as { email?: string };
+    return data.email?.toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function currentAdminEmail() {
+  return sessionEmail((await cookies()).get(COOKIE_NAME)?.value);
+}
+
 export async function isAdmin() {
-  return verifySessionValue((await cookies()).get(COOKIE_NAME)?.value);
+  const email = await currentAdminEmail();
+  if (!email) return false;
+  return hasDatabase ? Boolean(await getAdminUserByEmail(email)) : true;
 }
 
 export const sessionCookie = { name: COOKIE_NAME, maxAge };

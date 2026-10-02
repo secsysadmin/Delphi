@@ -489,6 +489,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .admin-title-row { align-items: center; margin-bottom: 18px; }
 .admin-title-row h1 { margin: 0 0 8px; font-size: clamp(2.75rem, 4.2vw, 4rem); line-height: .98; }
 .admin-title-row p { max-width: 54ch; }
+.admin-actions { display: flex; flex: 0 0 auto; gap: 10px; align-items: center; }
 .admin-overview { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-bottom: 24px; border-block: 1px solid var(--line); padding: 12px 0; color: var(--muted); font-size: .84rem; }
 .admin-overview p { margin: 0; }
 .admin-overview strong { color: var(--ink); font-weight: 780; }
@@ -502,6 +503,32 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .event-name small, .event-table__row small { font-family: var(--font-sans), Arial, sans-serif; }
 .event-table__header, .tabs button, .table-tools, .row-actions { font-family: var(--font-sans), Arial, sans-serif; }
 .row-actions a:hover, .row-actions button:hover { border-color: var(--maroon); color: var(--maroon); background: rgba(80, 0, 0, .045); }
+
+/* Administrator access remains part of the dashboard work surface. */
+.admin-users-page { padding-bottom: 108px; }
+.admin-users-page > .back-link { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 30px; color: var(--maroon); }
+.admin-users-heading { max-width: 680px; margin-bottom: 34px; }
+.admin-users-heading h1 { margin: 0 0 10px; font-size: clamp(2.75rem, 4.2vw, 4rem); font-weight: 500; letter-spacing: -.04em; line-height: .98; }
+.admin-users-heading p { margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.6; }
+.admin-users-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 24px; align-items: start; }
+.admin-user-list { min-height: 250px; }
+.admin-user-list__head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; border-bottom: 1px solid var(--line); padding: 20px 24px; }
+.admin-user-list h2, .admin-user-form h2 { margin: 0; font-family: var(--font-serif), Georgia, serif; font-size: 1.65rem; font-weight: 500; letter-spacing: -.025em; }
+.admin-user-list__head span { color: var(--muted); font-size: .75rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.admin-user-list ul { margin: 0; padding: 0; list-style: none; }
+.admin-user-list li { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 86px; border-bottom: 1px solid var(--line); padding: 16px 24px; }
+.admin-user-list li:last-child { border-bottom: 0; }
+.admin-user-list strong, .admin-user-list small { display: block; }
+.admin-user-list strong { color: var(--ink); font-family: var(--font-sans), Arial, sans-serif; font-size: .96rem; font-weight: 750; }
+.admin-user-list small { margin-top: 5px; color: var(--muted); font-size: .78rem; }
+.admin-user-list__empty { padding: 28px 24px; color: var(--muted); }
+.admin-user-form { padding: 24px; }
+.admin-user-form > p { margin: 8px 0 22px; color: var(--muted); font-size: .88rem; line-height: 1.55; }
+.admin-user-form form { display: grid; gap: 16px; }
+.admin-user-form label { display: grid; gap: 8px; color: var(--ink); font-size: .78rem; font-weight: 750; }
+.admin-user-form input { width: 100%; min-height: 45px; padding-inline: 12px; font: inherit; }
+.admin-user-form__help { margin: -5px 0 3px !important; color: var(--muted) !important; font-size: .76rem !important; }
+.form-success { margin: 0; color: var(--green); font-size: .82rem; font-weight: 700; }
 
 /* Registration operations: supporting data must remain legible at a glance. */
 .registrations-page .registrations-head p, .registrations-page .metric-card small, .registrations-page .registration-table th, .registrations-page .registration-table small { color: #514941; }
@@ -546,6 +573,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
   .event-card { grid-template-columns: 150px minmax(0, 1fr); grid-template-areas: "date body" "date link" "date details"; }
   .event-card ul { padding: 0 24px 28px; border-left: 0; }
   .admin-overview { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .admin-users-layout { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 650px) {
@@ -576,6 +604,12 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
   .event-card ul { padding: 0 0 16px; }
   .event-card__link { padding: 17px 0 28px; border-top: 1px solid var(--line); }
   .tabs { min-height: 0; overflow: visible; gap: 16px; }
+  .admin-title-row { align-items: flex-start; flex-direction: column; gap: 20px; }
+  .admin-actions { width: 100%; }
+  .admin-actions .button { flex: 1 1 auto; justify-content: center; }
+  .admin-users-page > .back-link { margin-bottom: 24px; }
+  .admin-users-heading { margin-bottom: 26px; }
+  .admin-user-list__head, .admin-user-list li, .admin-user-form { padding-inline: 18px; }
   .tabs button { font-size: .78rem; }
   .event-detail-hero .shell { padding: 44px 0 48px; }
   .event-detail-layout { gap: 42px; padding: 42px 0 66px; }

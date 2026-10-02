@@ -2,6 +2,15 @@ create extension if not exists pgcrypto;
 
 create schema if not exists sec_registration;
 
+create table if not exists sec_registration.admin_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists admin_users_email_idx on sec_registration.admin_users(lower(email));
+
 create table if not exists sec_registration.events (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,

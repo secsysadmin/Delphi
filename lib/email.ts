@@ -85,11 +85,17 @@ export function renderTemplate(template: string, registration: Registration, eve
 }
 
 function emailHtml(body: string, registration: Registration, event: RegistrationEvent, slot?: EventSlot | null) {
-  const candidateAccent = slot?.accentColor || event.accentColor || "#500000";
-  const accent = /^#[0-9a-f]{6}$/i.test(candidateAccent) ? candidateAccent : "#500000";
+  const candidateAccent = slot?.accentColor || event.accentColor || "#f7f4f1";
+  // Maroon is the legacy default. Keep that default event panel cream, while a
+  // configured event or slot color now fills the complete event panel.
+  const accent = /^#[0-9a-f]{6}$/i.test(candidateAccent) && candidateAccent.toLowerCase() !== "#500000"
+    ? candidateAccent
+    : "#f7f4f1";
+  const channels = accent.slice(1).match(/.{2}/g)?.map((value) => Number.parseInt(value, 16)) ?? [247, 244, 241];
+  const foreground = (channels[0] * 299 + channels[1] * 587 + channels[2] * 114) / 1000 < 150 ? "#fff8ef" : "#242321";
   const eventDate = slot?.startAt ?? event.startAt;
   const room = slot?.location || event.location;
-  return `<!doctype html><html><body style="margin:0;background:#f4f1ed;font-family:Arial,sans-serif;color:#242321"><div style="max-width:620px;margin:0 auto;padding:32px 18px"><div style="background:#4d0710;color:#fff;padding:24px 28px"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8">Student Engineers' Council</div><h1 style="font-size:24px;margin:8px 0 0">Registration confirmed</h1></div><div style="background:#fff;padding:28px;border:1px solid #e4dfd8;border-top:0"><p style="font-size:16px;line-height:1.7;white-space:pre-line">${escapeHtml(renderTemplate(body, registration, event, slot))}</p><div style="margin:26px 0 8px;padding:20px;border:1px solid ${accent};background:#f7f4f1"><strong style="display:block;font-size:20px">${escapeHtml(event.title)}</strong>${slot ? `<span style="display:block;margin-top:6px">${escapeHtml(slot.label)}</span>` : ""}<span style="display:block;margin-top:6px">${escapeHtml(formatDate(eventDate, true))} · ${escapeHtml(formatTime(eventDate))}</span><span style="display:block;margin-top:4px">${escapeHtml(room)}</span></div><p style="font-size:12px;color:#6b6864;margin-top:28px">SEC Registration Hub · Texas A&M University</p></div></div></body></html>`;
+  return `<!doctype html><html><body style="margin:0;background:#f4f1ed;font-family:Arial,sans-serif;color:#242321"><div style="max-width:620px;margin:0 auto;padding:32px 18px"><div style="background:#4d0710;color:#fff;padding:24px 28px"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8">Student Engineers' Council</div><h1 style="font-size:24px;margin:8px 0 0">Registration confirmed</h1></div><div style="background:#fff;padding:28px;border:1px solid #e4dfd8;border-top:0"><p style="font-size:16px;line-height:1.7;white-space:pre-line">${escapeHtml(renderTemplate(body, registration, event, slot))}</p><div style="margin:26px 0 8px;padding:20px;border:1px solid ${accent};background:${accent};color:${foreground}"><strong style="display:block;font-size:20px">${escapeHtml(event.title)}</strong>${slot ? `<span style="display:block;margin-top:6px">${escapeHtml(slot.label)}</span>` : ""}<span style="display:block;margin-top:6px">${escapeHtml(formatDate(eventDate, true))} · ${escapeHtml(formatTime(eventDate))}</span><span style="display:block;margin-top:4px">${escapeHtml(room)}</span></div><p style="font-size:12px;color:#6b6864;margin-top:28px">SEC Registration Hub · Texas A&M University</p></div></div></body></html>`;
 }
 
 export async function sendConfirmation(registration: Registration, event: RegistrationEvent, slot?: EventSlot | null) {
