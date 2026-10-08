@@ -15,10 +15,9 @@ export function AdminLogin({ error }: { error?: string }) {
         <div className="login-icon"><LockKeyhole /></div>
         <span className="eyebrow">SEC team access</span>
         <h1>Administrator sign in</h1>
-        <p>Manage events, registrations, forms, and participant email.</p>
         {message && <div className="form-error">{message}</div>}
         <a className="button button--primary button--full" href="/api/auth/google">Sign in with Google</a>
-        <p className="login-note">Access is limited to whitelisted SEC administrator accounts.</p>
+        <p className="login-note">Access is limited to authorized SEC admins.</p>
       </div>
     </section>
   );
