@@ -5,11 +5,13 @@ create schema if not exists sec_registration;
 create table if not exists sec_registration.admin_users (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
-  password_hash text not null,
   created_at timestamptz not null default now()
 );
 
 create index if not exists admin_users_email_idx on sec_registration.admin_users(lower(email));
+
+-- Admin access moved to a Google OAuth whitelist; password hashes are no longer used.
+alter table sec_registration.admin_users drop column if exists password_hash;
 
 create table if not exists sec_registration.events (
   id uuid primary key default gen_random_uuid(),
@@ -31,6 +33,7 @@ create table if not exists sec_registration.events (
   form_fields jsonb not null default '[]'::jsonb,
   confirmation_subject text not null default 'Registration confirmed: {{event}}',
   confirmation_body text not null default 'Howdy {{firstName}}! Your registration for {{event}} is confirmed.',
+  show_date_in_confirmation boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (end_at > start_at),
@@ -39,6 +42,9 @@ create table if not exists sec_registration.events (
 
 alter table sec_registration.events
   add column if not exists tamu_email_only boolean not null default false;
+
+alter table sec_registration.events
+  add column if not exists show_date_in_confirmation boolean not null default true;
 
 create table if not exists sec_registration.event_slots (
   id uuid primary key default gen_random_uuid(),

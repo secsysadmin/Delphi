@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { BriefcaseBusiness, Camera, ExternalLink, Mail, MapPin } from "lucide-react";
+import { BriefcaseBusiness, Camera, ExternalLink, MapPin } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 
 function SecMark({ compact = false }: { compact?: boolean }) {
@@ -60,11 +60,10 @@ export function SiteFooter() {
   return (
     <footer className="site-footer">
       <div className="shell footer-grid">
-        <div><SecMark compact /><p className="footer-copy">Connecting Aggies with the experiences,<br />people, and ideas that shape engineering.</p></div>
+        <div><SecMark compact /><p className="footer-copy">Be the representative voice of all engineering students, work to increase engineering awareness through our programs and events, and foster the professional advancement of all engineering students within the College of Engineering.</p></div>
         <div className="footer-contact">
           <h3>Student Engineers&apos; Council</h3>
           <p><MapPin size={16} /> Texas A&amp;M University · TAMU 3127<br />College Station, TX 77843</p>
-          <a href="mailto:sec@tamu.edu"><Mail size={16} /> sec@tamu.edu</a>
         </div>
         <div className="footer-links">
           <h3>Stay connected</h3>

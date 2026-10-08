@@ -37,6 +37,7 @@ function mapEvent(row: Record<string, unknown>, slots: EventSlot[] = []): Regist
     formFields: (row.formFields ?? []) as FormField[],
     confirmationSubject: String(row.confirmationSubject ?? "Registration confirmed: {{event}}"),
     confirmationBody: String(row.confirmationBody ?? "Howdy {{firstName}}! Your registration for {{event}} is confirmed."),
+    showDateInConfirmation: row.showDateInConfirmation === undefined ? true : Boolean(row.showDateInConfirmation),
     slots,
     registeredCount,
     remaining: capacity === null || row.capacityMode !== "event" ? null : Math.max(0, capacity - registeredCount),
@@ -73,6 +74,7 @@ async function dbEvents(): Promise<RegistrationEvent[]> {
       e.capacity_mode as "capacityMode", e.capacity, e.tamu_email_only as "tamuEmailOnly", e.sort_order as "sortOrder",
       e.accent_color as "accentColor", e.form_fields as "formFields",
       e.confirmation_subject as "confirmationSubject", e.confirmation_body as "confirmationBody",
+      e.show_date_in_confirmation as "showDateInConfirmation",
       e.created_at as "createdAt", e.updated_at as "updatedAt",
       count(r.id) filter (where r.status != 'cancelled')::int as "registeredCount"
     from sec_registration.events e
@@ -125,6 +127,7 @@ function cleanInput(input: EventInput): EventInput {
     accentColor: /^#[0-9a-f]{6}$/i.test(input.accentColor) ? input.accentColor : "#500000",
     capacity: input.capacityMode === "event" ? Number(input.capacity) : null,
     tamuEmailOnly: Boolean(input.tamuEmailOnly),
+    showDateInConfirmation: input.showDateInConfirmation !== false,
     sortOrder: Number(input.sortOrder ?? 0),
     formFields: (input.formFields ?? []).map((field, index) => ({ ...field, id: field.id || `field-${Date.now()}-${index}`, label: field.label.trim() })),
     slots: (input.slots ?? []).map((slot, index) => ({ ...slot, id: slot.id || randomUUID(), label: slot.label.trim() || `Session ${index + 1}`, capacity: input.capacityMode === "slot" ? Number(slot.capacity) || null : null })),
@@ -160,11 +163,12 @@ export async function saveEvent(rawInput: EventInput, id?: string) {
     await tx`
       insert into sec_registration.events (id, slug, title, summary, description, location, start_at, end_at,
         registration_open_at, registration_close_at, status, capacity_mode, capacity, tamu_email_only, sort_order,
-        accent_color, form_fields, confirmation_subject, confirmation_body, updated_at)
+        accent_color, form_fields, confirmation_subject, confirmation_body, show_date_in_confirmation, updated_at)
       values (${eventId}, ${input.slug}, ${input.title}, ${input.summary}, ${input.description}, ${input.location},
         ${input.startAt}, ${input.endAt}, ${input.registrationOpenAt}, ${input.registrationCloseAt}, ${input.status},
         ${input.capacityMode}, ${input.capacity}, ${input.tamuEmailOnly}, ${input.sortOrder}, ${input.accentColor},
-        ${tx.json(input.formFields as never)}, ${input.confirmationSubject}, ${input.confirmationBody}, now())
+        ${tx.json(input.formFields as never)}, ${input.confirmationSubject}, ${input.confirmationBody},
+        ${Boolean(input.showDateInConfirmation)}, now())
       on conflict (id) do update set slug = excluded.slug, title = excluded.title, summary = excluded.summary,
         description = excluded.description, location = excluded.location, start_at = excluded.start_at,
         end_at = excluded.end_at, registration_open_at = excluded.registration_open_at,
@@ -172,6 +176,7 @@ export async function saveEvent(rawInput: EventInput, id?: string) {
         capacity_mode = excluded.capacity_mode, capacity = excluded.capacity, tamu_email_only = excluded.tamu_email_only, sort_order = excluded.sort_order,
         accent_color = excluded.accent_color, form_fields = excluded.form_fields,
         confirmation_subject = excluded.confirmation_subject, confirmation_body = excluded.confirmation_body,
+        show_date_in_confirmation = excluded.show_date_in_confirmation,
         updated_at = now()
     `;
     const slotIds = input.slots.map((slot) => slot.id);

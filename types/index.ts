@@ -54,6 +54,7 @@ export type RegistrationEvent = {
   formFields: FormField[];
   confirmationSubject: string;
   confirmationBody: string;
+  showDateInConfirmation?: boolean;
   slots: EventSlot[];
   registeredCount: number;
   remaining: number | null;

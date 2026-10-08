@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { getAdminUserByEmail, verifyAdminPassword } from "@/lib/admin-users";
+import { getAdminUserByEmail } from "@/lib/admin-users";
 import { hasDatabase } from "@/lib/db";
 
 const COOKIE_NAME = "sec_admin_session";
+const STATE_COOKIE_NAME = "sec_google_oauth_state";
 const maxAge = 60 * 60 * 12;
 
 function secret() {
@@ -14,19 +15,17 @@ function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
-export async function validAdminCredentials(email: string, password: string) {
-  if (hasDatabase) {
-    const admin = await getAdminUserByEmail(email);
-    return Boolean(admin && verifyAdminPassword(password, admin.passwordHash));
-  }
-  const expectedEmail = process.env.ADMIN_EMAIL || "admin@sec.tamu.edu";
-  const expectedPassword = process.env.ADMIN_PASSWORD || "gig-em";
-  const leftEmail = Buffer.from(email.toLowerCase());
-  const rightEmail = Buffer.from(expectedEmail.toLowerCase());
-  const leftPassword = Buffer.from(password);
-  const rightPassword = Buffer.from(expectedPassword);
-  return leftEmail.length === rightEmail.length && leftPassword.length === rightPassword.length
-    && timingSafeEqual(leftEmail, rightEmail) && timingSafeEqual(leftPassword, rightPassword);
+function previewAdminEmails() {
+  return (process.env.ADMIN_EMAIL || "admin@sec.tamu.edu")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export async function isWhitelistedAdminEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  if (hasDatabase) return Boolean(await getAdminUserByEmail(normalized));
+  return previewAdminEmails().includes(normalized);
 }
 
 export function createSessionValue(email: string) {
@@ -68,3 +67,4 @@ export async function isAdmin() {
 }
 
 export const sessionCookie = { name: COOKIE_NAME, maxAge };
+export const oauthStateCookie = { name: STATE_COOKIE_NAME, maxAge: 600 };
