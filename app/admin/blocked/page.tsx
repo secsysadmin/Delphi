@@ -12,7 +12,7 @@ export default async function AdminBlockedPage({ searchParams }: { searchParams:
         <div className="login-icon"><ShieldAlert /></div>
         <span className="eyebrow">SEC team access</span>
         <h1>You&apos;re not on the admin list</h1>
-        <p>This Google account isn&apos;t whitelisted for SEC Registration Hub administration.</p>
+        <p>This account is not an authorized SEC admin account.</p>
         {email && <span className="blocked-email">{email}</span>}
         <div className="login-card__actions">
           <a className="button button--primary button--full" href="/api/auth/google">Try a different account</a>
