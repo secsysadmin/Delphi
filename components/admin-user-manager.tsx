@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import type { AdminUser } from "@/lib/admin-users";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers: AdminUser[]; currentEmail: string }) {
   const [users, setUsers] = useState(initialUsers);
@@ -11,6 +12,7 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<AdminUser | null>(null);
 
   async function addUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,7 +33,7 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
   }
 
   async function removeUser(user: AdminUser) {
-    if (!window.confirm(`Remove administrator access for ${user.email}?`)) return;
+    setPendingRemoval(null);
     setDeletingId(user.id); setMessage(""); setError("");
     const response = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
     const data = await response.json();
@@ -51,7 +53,7 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
         <div className="admin-user-list__head"><h2 id="admin-list-heading">Administrator accounts</h2><span>{users.length} {users.length === 1 ? "account" : "accounts"}</span></div>
         {users.length ? <ul>{users.map((user) => {
           const isCurrentUser = user.email === currentEmail.toLowerCase();
-          return <li key={user.id}><div><strong>{user.email}</strong><small>{isCurrentUser ? "Current account" : "Administrator access"}</small></div><button className="registration-delete" type="button" onClick={() => removeUser(user)} disabled={isCurrentUser || deletingId === user.id} title={isCurrentUser ? "You cannot remove the account currently signed in" : `Remove ${user.email}`} aria-label={`Remove ${user.email}`}><Trash2 size={16} /></button></li>;
+          return <li key={user.id}><div><strong>{user.email}</strong><small>{isCurrentUser ? "Current account" : "Administrator access"}</small></div><button className="registration-delete" type="button" onClick={() => setPendingRemoval(user)} disabled={isCurrentUser || deletingId === user.id} title={isCurrentUser ? "You cannot remove the account currently signed in" : `Remove ${user.email}`} aria-label={`Remove ${user.email}`}><Trash2 size={16} /></button></li>;
         })}</ul> : <p className="admin-user-list__empty">No administrator accounts exist yet.</p>}
       </section>
       <div className="admin-user-actions">
@@ -67,5 +69,14 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
         </section>
       </div>
     </div>
+    <ConfirmDialog
+      open={pendingRemoval !== null}
+      title="Remove administrator access?"
+      description={pendingRemoval ? `${pendingRemoval.email} will no longer be able to sign in to the admin dashboard. You can whitelist them again at any time.` : ""}
+      confirmLabel="Remove access"
+      tone="danger"
+      onConfirm={() => pendingRemoval && removeUser(pendingRemoval)}
+      onCancel={() => setPendingRemoval(null)}
+    />
   </main>;
 }

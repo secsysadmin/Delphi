@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, Copy, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { EventInput, FormField, QuestionType } from "@/types";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const questionTypes: Array<{ value: QuestionType; label: string }> = [
   { value: "short_text", label: "Short answer" }, { value: "long_text", label: "Long answer" },
@@ -105,8 +106,10 @@ export function EventEditor({ eventId }: { eventId?: string }) {
     router.push("/admin"); router.refresh();
   }
 
+  const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
+
   async function archive() {
-    if (!eventId || !confirm("Archive this event? Registrations will remain available.")) return;
+    setConfirmArchiveOpen(false);
     await fetch(`/api/events/${eventId}`, { method: "DELETE" }); router.push("/admin"); router.refresh();
   }
 
@@ -130,8 +133,17 @@ export function EventEditor({ eventId }: { eventId?: string }) {
       <EditorSection id="email" number="05" title="Confirmation email" description="Sent automatically after a successful registration. Slots can override this template.">
         <div className="template-variables"><strong>Available variables</strong>{["{{firstName}}", "{{name}}", "{{event}}", "{{slot}}", "{{date}}", "{{time}}", "{{room}}"].map((variable) => <code key={variable}>{variable}</code>)}</div><div className="form-stack"><label>Subject<input value={event.confirmationSubject} onChange={(e) => set("confirmationSubject", e.target.value)} /></label><label>Message<textarea rows={7} value={event.confirmationBody} onChange={(e) => set("confirmationBody", e.target.value)} /></label><label className="checkbox-row checkbox-row--editor"><input type="checkbox" checked={event.showDateInConfirmation !== false} onChange={(e) => set("showDateInConfirmation", e.target.checked)} /><span><strong>Show the event date in the confirmation card</strong><small>Turn off to show only the time and location, useful for recurring or date-flexible events.</small></span></label></div><div className="email-preview"><div><small>STUDENT ENGINEERS&apos; COUNCIL</small><strong>Registration Confirmed</strong></div><div><p>{event.confirmationBody.replaceAll("{{firstName}}", "Reveille").replaceAll("{{event}}", event.title || "Your event").replaceAll("{{date}}", "Mar 4").replaceAll("{{time}}", "11:30 AM").replaceAll("{{room}}", event.location || "ZACH 340")}</p><section style={{ borderColor: event.accentColor }}><strong>{event.title || "Your event"}</strong><span>{event.showDateInConfirmation !== false ? `${previewDate(event.startAt)}, ` : ""}{previewTime(event.startAt)} – {previewTime(event.endAt)}</span><span>{event.location || "Event location"}</span></section></div></div>
       </EditorSection>
-      <div className="editor-bottom-actions">{eventId && event.status !== "archived" && <button className="danger-link" onClick={archive}>Archive event</button>}<div><button className="button button--secondary" onClick={() => save("draft")} disabled={saving}>Save draft</button><button className="button button--primary" onClick={() => save("published")} disabled={saving}>{saving ? "Saving…" : "Save & publish"}</button></div></div>
+      <div className="editor-bottom-actions">{eventId && event.status !== "archived" && <button className="danger-link" onClick={() => setConfirmArchiveOpen(true)}>Archive event</button>}<div><button className="button button--secondary" onClick={() => save("draft")} disabled={saving}>Save draft</button><button className="button button--primary" onClick={() => save("published")} disabled={saving}>{saving ? "Saving…" : "Save & publish"}</button></div></div>
     </div></div>
+    <ConfirmDialog
+      open={confirmArchiveOpen}
+      title="Archive this event?"
+      description="The event moves out of the active list and registration closes right away. Nothing is deleted — past registrations and participant data stay fully available to view and export."
+      confirmLabel="Archive event"
+      tone="danger"
+      onConfirm={archive}
+      onCancel={() => setConfirmArchiveOpen(false)}
+    />
   </div>;
 }
 

@@ -276,6 +276,14 @@ label > small { color: var(--muted); font-weight: 500; }
 .email-preview section { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); padding: 13px; background: var(--paper); font-size: .78rem; }
 .editor-bottom-actions { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
 .danger-link { border: 0; color: #9b2529; background: transparent; font-size: .78rem; text-decoration: underline; }
+.button--danger { color: white; background: #9b2529; }
+.button--danger:hover { background: #7e1d20; }
+
+.confirm-overlay { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(33, 25, 20, .55); }
+.confirm-dialog { width: min(420px, 100%); border: 1px solid var(--line); border-radius: 10px; padding: 28px; background: white; box-shadow: var(--shadow); }
+.confirm-dialog h2 { margin: 0 0 10px; font-family: var(--font-serif); font-size: 1.4rem; }
+.confirm-dialog p { margin: 0 0 24px; color: var(--muted); font-size: .9rem; line-height: 1.55; }
+.confirm-dialog__actions { display: flex; justify-content: flex-end; gap: 10px; }
 .editor-error { margin-bottom: 20px; }
 
 .registrations-page > .back-link { margin-bottom: 24px; }
