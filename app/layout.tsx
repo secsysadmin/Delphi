@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Newsreader } from "next/font/google";
 import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { ScrollRestorationGuard } from "@/components/scroll-restoration-guard";
 
 const sans = DM_Sans({ subsets: ["latin"], variable: "--font-sans" });
 const serif = Newsreader({ subsets: ["latin"], variable: "--font-serif" });
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <body className={`${sans.variable} ${serif.variable}`}>
+        <ScrollRestorationGuard />
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />

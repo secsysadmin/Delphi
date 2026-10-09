@@ -347,7 +347,6 @@ label > small { color: var(--muted); font-weight: 500; }
 /* Field Guide redesign */
 :root { --ink: #26221f; --paper: #f5f0e7; --sand: #e9dfd0; --line: #c9bdad; --maroon: #4d0710; --maroon-2: #721422; --green: #285e4d; --gold: #a6752d; --guide-shadow: 0 14px 34px rgba(55, 35, 19, .11); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-html { scroll-behavior: smooth; }
 html::selection { color: #fff8ee; background: var(--maroon); }
 body { background: var(--paper); color: var(--ink); letter-spacing: -.01em; }
 body::before { position: fixed; z-index: -1; inset: 0; content: ""; pointer-events: none; opacity: .35; background-image: radial-gradient(rgba(74, 48, 27, .14) .55px, transparent .55px); background-size: 6px 6px; }
