@@ -145,7 +145,7 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
             <a className="directory-hero__link" href="#event-calendar" onClick={scrollToCalendar}>Browse the calendar <ArrowRight size={18} /></a>
           </div>
           <div className="directory-hero__next" aria-live="polite">
-            {nextEvent ? <Link href={`/events/${nextEvent.slug}#event-detail`}>
+            {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
               <span>Next on the calendar</span>
               <strong>{nextEvent.title}</strong>
               <p><CalendarDays size={17} />{formatDate(nextEvent.startAt, true)}</p>

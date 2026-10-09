@@ -50,7 +50,7 @@ export function EventRegistration({ slug }: { slug: string }) {
   }, [slug]);
 
   useEffect(() => {
-    if (!event || window.location.hash !== "#event-detail") return;
+    if (!event) return;
     const frame = requestAnimationFrame(() => document.getElementById("event-detail")?.scrollIntoView({ block: "start" }));
     return () => cancelAnimationFrame(frame);
   }, [event]);

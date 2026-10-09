@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+const ownScrollRoute = /^\/events\/[^/]+$/;
+
 export function ScrollRestorationGuard() {
   const pathname = usePathname();
 
@@ -13,6 +15,7 @@ export function ScrollRestorationGuard() {
   }, []);
 
   useEffect(() => {
+    if (ownScrollRoute.test(pathname)) return;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [pathname]);
 
