@@ -141,7 +141,7 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
         <div className="shell directory-hero__inner">
           <div className="directory-hero__copy">
             <h1 aria-label={`${isAdmin ? "Plan" : "Find"} your next SEC event.`}>{[isAdmin ? "Plan" : "Find", "your", "next", "SEC", "event."].map((word, index) => <span key={word} style={{ "--word-index": index } as React.CSSProperties}>{word}</span>)}</h1>
-            <p>Browse workshops, conversations, and hands-on sessions. Choose the event that fits, then register before its capacity closes.</p>
+            <p>Browse DI Saturday presentations, Career Discovery Fair registrations, and Lunch & Learn sessions. Make sure to register before an event hits its capacity.</p>
             <a className="directory-hero__link" href="#event-calendar" onClick={scrollToCalendar}>Browse the calendar <ArrowRight size={18} /></a>
           </div>
           <div className="directory-hero__next" aria-live="polite">
@@ -180,7 +180,7 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
                   style={{ "--event-accent": event.accentColor, "--reveal-duration": `${revealDurations[event.id] ?? 480}ms` } as React.CSSProperties}
                 >
                   <div className="event-card__stripe" />
-                  <div className="event-card__top"><span className={`status-pill status-pill--${phase}`}>{soldOut ? "Full" : phase === "open" ? "Registration open" : phase === "upcoming" ? "Opens soon" : "Registration closed"}</span><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
+                  <div className="event-card__top"><span className={`status-pill status-pill--${soldOut ? "full" : phase}`}>{soldOut ? "Full" : phase === "open" ? "Registration open" : phase === "upcoming" ? "Opens soon" : "Registration closed"}</span><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
                   <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p><ul><li><CalendarDays size={17} />{formatDate(event.startAt, true)}</li><li><MapPin size={17} />{event.location}</li>{event.slots.length > 0 && <li><Clock3 size={17} />{event.slots.length} time slots available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spots remaining</li>}</ul></div>
                   <Link href={`/events/${event.slug}`} className="event-card__link">View event <ArrowRight size={18} /></Link>
                 </article>
