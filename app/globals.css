@@ -800,3 +800,11 @@ html::selection, ::selection { color: #fff; background: var(--maroon); }
   .event-card ul { padding: 0 0 16px; border: 0; }
   .event-card__link { padding: 17px 0 28px; border-top: 1px solid var(--line); }
 }
+
+/* The compact mobile rail keeps availability and date as one deliberate row. */
+@media (max-width: 650px), (hover: none) and (pointer: coarse) {
+  .event-card__top { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; padding-bottom: 20px; }
+  .event-card__top .status-pill { width: fit-content; max-width: 100%; justify-self: start; gap: 5px; padding: 4px 6px; font-size: .5rem; letter-spacing: .05em; line-height: 1.1; white-space: nowrap; }
+  .event-card__date { font-size: 3rem; line-height: .8; }
+  .event-card__date strong { margin-bottom: 6px; font-size: .64rem; }
+}
