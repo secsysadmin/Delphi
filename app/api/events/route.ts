@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { getEvents, saveEvent } from "@/lib/store";
 import type { EventInput } from "@/types";
 
@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const event = await saveEvent((await request.json()) as EventInput);

@@ -1,5 +1,4 @@
 import { EventDirectory } from "@/components/event-directory";
-import { isAdmin } from "@/lib/auth";
 
 export default async function HomePage() {
   const monthParts = Object.fromEntries(
@@ -9,5 +8,5 @@ export default async function HomePage() {
       .map(({ type, value }) => [type, value]),
   );
 
-  return <EventDirectory isAdmin={await isAdmin()} calendarStart={{ year: Number(monthParts.year), month: Number(monthParts.month) }} />;
+  return <EventDirectory calendarStart={{ year: Number(monthParts.year), month: Number(monthParts.month) }} />;
 }

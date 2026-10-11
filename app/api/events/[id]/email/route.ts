@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { sendBroadcast } from "@/lib/email";
 import { getEvent, getRegistrations } from "@/lib/store";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;

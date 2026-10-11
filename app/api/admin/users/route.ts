@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminUser, listAdminUsers } from "@/lib/admin-users";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 
 export async function GET() {
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -8,6 +8,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { email } = await request.json() as { email?: string };

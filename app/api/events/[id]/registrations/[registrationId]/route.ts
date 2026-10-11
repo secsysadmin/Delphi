@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "@/lib/auth";
+import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { deleteRegistration } from "@/lib/store";
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; registrationId: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string; registrationId: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, registrationId } = await params;
   const deleted = await deleteRegistration(id, registrationId);

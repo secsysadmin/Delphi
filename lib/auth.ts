@@ -8,7 +8,10 @@ const STATE_COOKIE_NAME = "sec_google_oauth_state";
 const maxAge = 60 * 60 * 12;
 
 function secret() {
-  return process.env.AUTH_SECRET || "local-preview-secret-change-before-deploy";
+  const configured = process.env.AUTH_SECRET;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") throw new Error("AUTH_SECRET must be configured in production.");
+  return "local-preview-secret-change-before-deploy";
 }
 
 function sign(payload: string) {
@@ -64,6 +67,20 @@ export async function isAdmin() {
   const email = await currentAdminEmail();
   if (!email) return false;
   return hasDatabase ? Boolean(await getAdminUserByEmail(email)) : true;
+}
+
+/** Browser-facing mutation routes must originate from this application. */
+export function isSameOriginRequest(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      return new URL(origin).origin === new URL(request.url).origin;
+    } catch {
+      return false;
+    }
+  }
+  const fetchSite = request.headers.get("sec-fetch-site");
+  return fetchSite === null || fetchSite === "same-origin" || fetchSite === "none";
 }
 
 export const sessionCookie = { name: COOKIE_NAME, maxAge };

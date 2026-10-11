@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Search, Users } from "lucide-react";
+import { ArrowRight, BadgeCheck, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3, LockKeyhole, MapPin, Search, Users } from "lucide-react";
 import { eventPhase, formatDate } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
 
 const chicagoDateParts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
-const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
+// Calendar dates are calendar values, not instants. Keep their arithmetic and
+// formatting in UTC so the server and browser produce identical initial HTML.
+const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
 function dayKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function eventDayKey(date: string) {
@@ -18,7 +20,14 @@ function eventDayKey(date: string) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; calendarStart: { year: number; month: number } }) {
+function EventStatus({ phase, soldOut }: { phase: ReturnType<typeof eventPhase>; soldOut: boolean }) {
+  if (soldOut) return <span className="status-pill status-pill--closed"><LockKeyhole aria-hidden="true" size={14} /><span>Event full</span></span>;
+  if (phase === "open") return <span className="status-pill status-pill--open"><BadgeCheck aria-hidden="true" size={14} /><span>Registration open</span></span>;
+  if (phase === "upcoming") return <span className="status-pill status-pill--upcoming"><CalendarClock aria-hidden="true" size={14} /><span>Opens soon</span></span>;
+  return <span className="status-pill status-pill--closed"><LockKeyhole aria-hidden="true" size={14} /><span>Registration closed</span></span>;
+}
+
+export function EventDirectory({ calendarStart }: { calendarStart: { year: number; month: number } }) {
   const [events, setEvents] = useState<RegistrationEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -43,22 +52,23 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
   }, [events, query, sort]);
 
   const nextEvent = useMemo(() => events.filter((event) => eventPhase(event) !== "past" && event.status === "published").sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [events]);
-  const firstCalendarMonth = useMemo(() => new Date(calendarStart.year, calendarStart.month - 1, 1), [calendarStart.month, calendarStart.year]);
-  const calendarMonth = useMemo(() => new Date(firstCalendarMonth.getFullYear(), firstCalendarMonth.getMonth() + calendarMonthOffset, 1), [firstCalendarMonth, calendarMonthOffset]);
-  const lastCalendarMonth = useMemo(() => new Date(firstCalendarMonth.getFullYear(), firstCalendarMonth.getMonth() + 11, 1), [firstCalendarMonth]);
+  const calendarMonth = useMemo(() => new Date(Date.UTC(calendarStart.year, calendarStart.month - 1 + calendarMonthOffset, 1)), [calendarMonthOffset, calendarStart.month, calendarStart.year]);
   const calendarDays = useMemo(() => {
-    if (!calendarMonth) return [];
-    const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
-    const dayCount = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
-    return [...Array<Date | null>(firstDay.getDay()).fill(null), ...Array.from({ length: dayCount }, (_, index) => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index + 1))];
+    const year = calendarMonth.getUTCFullYear();
+    const month = calendarMonth.getUTCMonth();
+    const firstDay = new Date(Date.UTC(year, month, 1));
+    const dayCount = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return [...Array<Date | null>(firstDay.getUTCDay()).fill(null), ...Array.from({ length: dayCount }, (_, index) => new Date(Date.UTC(year, month, index + 1)))];
   }, [calendarMonth]);
   const calendarEvents = useMemo(() => events.filter((event) => event.status === "published" && eventPhase(event) !== "past").reduce<Record<string, RegistrationEvent[]>>((byDay, event) => {
     const key = eventDayKey(event.startAt);
     (byDay[key] ??= []).push(event);
     return byDay;
   }, {}), [events]);
-  const isFirstCalendarMonth = Boolean(calendarMonth && firstCalendarMonth && calendarMonth.getTime() === firstCalendarMonth.getTime());
-  const isLastCalendarMonth = Boolean(calendarMonth && lastCalendarMonth && calendarMonth.getTime() === lastCalendarMonth.getTime());
+  // These are derived directly from serializable client state. Comparing Date
+  // instances here made the server and browser disagree in some time zones.
+  const isFirstCalendarMonth = calendarMonthOffset === 0;
+  const isLastCalendarMonth = calendarMonthOffset === 11;
 
   function scrollToCalendar(event: React.MouseEvent<HTMLAnchorElement>) {
     event.preventDefault();
@@ -137,14 +147,20 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
 
   return (
     <>
-      <section className="directory-hero">
-        <div className="shell directory-hero__inner">
-          <div className="directory-hero__copy">
-            <h1 aria-label={`${isAdmin ? "Plan" : "Find"} your next SEC event.`}>{[isAdmin ? "Plan" : "Find", "your", "next", "SEC", "event."].map((word, index) => <span key={word} style={{ "--word-index": index } as React.CSSProperties}>{word}</span>)}</h1>
-            <p>Browse workshops, conversations, and hands-on sessions. Choose the event that fits, then register before its capacity closes.</p>
-            <a className="directory-hero__link" href="#event-calendar" onClick={scrollToCalendar}>Browse the calendar <ArrowRight size={18} /></a>
+      <section className="directory-desk" aria-labelledby="events-heading">
+        <div className="shell directory-desk__inner">
+          <div className="directory-desk__workspace">
+            <div className="directory-desk__heading">
+              <h1 id="events-heading">SEC Events</h1>
+              <p aria-live="polite">{loading ? "Loading events" : query ? `${visible.length} matching event${visible.length === 1 ? "" : "s"}` : `${visible.length} upcoming event${visible.length === 1 ? "" : "s"}`}</p>
+            </div>
+            <div className="directory-desk__controls">
+              <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events" aria-label="Search events" /></label>
+              <label className="select-label"><span>Sort by</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="custom">Featured</option><option value="date">Soonest</option><option value="alphabetical">A–Z</option></select></label>
+              <a className="directory-desk__calendar-link" href="#event-calendar" onClick={scrollToCalendar}>Browse calendar <ArrowRight size={17} /></a>
+            </div>
           </div>
-          <div className="directory-hero__next" aria-live="polite">
+          <aside className="directory-desk__next" aria-live="polite">
             {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
               <span>Next on the calendar</span>
               <strong>{nextEvent.title}</strong>
@@ -152,27 +168,18 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
               <p><MapPin size={17} />{nextEvent.location}</p>
               <em>View event <ArrowRight size={18} /></em>
             </Link> : <div><span>Next on the calendar</span><strong>{loading ? "Loading upcoming events…" : "New events are being scheduled."}</strong></div>}
-          </div>
+          </aside>
         </div>
       </section>
       <section id="event-directory" className="events-section shell">
-        <div className="section-heading">
-          <div className="directory-title"><h2>Upcoming Events</h2></div>
-          <div className="directory-controls">
-            <div className="events-tools">
-              <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events" aria-label="Search events" /></label>
-              <label className="select-label"><span>Sort by</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="custom">Featured</option><option value="date">Soonest</option><option value="alphabetical">A–Z</option></select></label>
-            </div>
-          </div>
-        </div>
-
         {loading ? <div className="loading-grid"><div /><div /><div /></div> : visible.length ? (
           <div className="event-grid">
             {visible.map((event) => {
               const phase = eventPhase(event);
               const soldOut = event.capacityMode === "event" ? event.remaining === 0 : Boolean(event.slots.length && event.slots.every((slot) => slot.remaining === 0));
               return (
-                <article
+                <Link
+                  href={`/events/${event.slug}`}
                   className={`event-card event-card--motion-ready ${revealedEventIds.has(event.id) ? "event-card--revealed" : ""}`}
                   data-event-id={event.id}
                   key={event.id}
@@ -180,10 +187,11 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
                   style={{ "--event-accent": event.accentColor, "--reveal-duration": `${revealDurations[event.id] ?? 480}ms` } as React.CSSProperties}
                 >
                   <div className="event-card__stripe" />
-                  <div className="event-card__top"><span className={`status-pill status-pill--${phase}`}>{soldOut ? "Full" : phase === "open" ? "Registration open" : phase === "upcoming" ? "Opens soon" : "Registration closed"}</span><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
-                  <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p><ul><li><CalendarDays size={17} />{formatDate(event.startAt, true)}</li><li><MapPin size={17} />{event.location}</li>{event.slots.length > 0 && <li><Clock3 size={17} />{event.slots.length} time slots available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spots remaining</li>}</ul></div>
-                  <Link href={`/events/${event.slug}`} className="event-card__link">View event <ArrowRight size={18} /></Link>
-                </article>
+                  <div className="event-card__top"><EventStatus phase={phase} soldOut={soldOut} /><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
+                  <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p></div>
+                  <ul><li><CalendarDays size={17} />{formatDate(event.startAt, true)}</li><li><MapPin size={17} />{event.location}</li>{event.slots.length > 0 && <li><Clock3 size={17} />{event.slots.length} time slots available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spots remaining</li>}</ul>
+                  <span className="event-card__link">View event <ArrowRight size={20} /></span>
+                </Link>
               );
             })}
           </div>
@@ -203,8 +211,8 @@ export function EventDirectory({ isAdmin, calendarStart }: { isAdmin: boolean; c
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
             {calendarDays.map((day, index) => {
               const dayEvents = day ? calendarEvents[dayKey(day)] ?? [] : [];
-              return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${monthLabel.format(day)} ${day.getDate()}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
-                {day && <span className="calendar-grid__date">{day.getDate()}</span>}
+              return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${monthLabel.format(day)} ${day.getUTCDate()}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
+                {day && <span className="calendar-grid__date">{day.getUTCDate()}</span>}
                 {dayEvents.length > 0 && <span className="calendar-grid__events">{dayEvents.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatDate(event.startAt, true)}, ${event.location}`}>
                   <span aria-hidden="true">{event.title}</span>
                   <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatDate(event.startAt, true)} · {event.location}</small></span>

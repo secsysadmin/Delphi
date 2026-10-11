@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { currentAdminEmail, isAdmin } from "@/lib/auth";
+import { currentAdminEmail, isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { deleteAdminUser } from "@/lib/admin-users";
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const currentEmail = await currentAdminEmail();
   if (!currentEmail) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

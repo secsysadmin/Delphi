@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/lib/auth";
 import { createRegistration, updateEmailStatus } from "@/lib/store";
 import { sendConfirmation } from "@/lib/email";
 
@@ -17,6 +18,7 @@ function rateLimited(request: Request) {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (rateLimited(request)) return NextResponse.json({ error: "Too many attempts. Please wait a minute." }, { status: 429 });
   try {
     const { id } = await params;

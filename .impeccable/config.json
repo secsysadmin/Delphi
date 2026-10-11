@@ -8,7 +8,7 @@
         "rule": "overused-font",
         "value": "arial",
         "createdAt": "2026-10-02T04:14:13.471Z",
-        "reason": "Transactional email compatibility: inline CSS intentionally uses a broadly supported system font."
+        "reason": "Email-client compatibility: Arial is the deliberate fallback for HTML email rendering."
       }
     ]
   }
