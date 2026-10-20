@@ -134,7 +134,13 @@ label > small { color: var(--muted); font-weight: 500; }
 .custom-field > span { font-weight: 750; }
 .form-section-block { padding-top: 6px; }
 .form-section-block h3 { margin: 0 0 8px; color: var(--ink); font-family: var(--font-serif); font-size: 1.35rem; line-height: 1.25; }
-.form-section-block p { margin: 0; color: #393532; font-size: .9rem; line-height: 1.6; white-space: pre-line; }
+.rich-text { display: flex; flex-direction: column; gap: 10px; color: #393532; font-size: .9rem; line-height: 1.6; }
+.rich-text p, .rich-text ul, .rich-text ol { margin: 0; }
+.rich-text ul, .rich-text ol { display: flex; flex-direction: column; gap: 4px; padding-left: 1.4rem; }
+.rich-text strong { color: var(--ink); font-weight: 750; }
+.rich-text a { color: var(--maroon-2); text-decoration: underline; text-underline-offset: 2px; }
+.section-preview { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding: 16px 18px; border: 1px dashed #d5cec7; background: white; }
+.section-preview > span { color: var(--muted); font-size: .7rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .choice-list { display: flex; flex-wrap: wrap; gap: 10px; }
 .choice-list label { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 5px; padding: 10px 13px; background: white; cursor: pointer; }
 .choice-list input, .checkbox-row input { width: auto; }
