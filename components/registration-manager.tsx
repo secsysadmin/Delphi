@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, Download, Mail, Search, Send, Trash2, Users } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, isQuestion } from "@/lib/utils";
 import type { Registration, RegistrationEvent } from "@/types";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
@@ -22,7 +22,7 @@ export function RegistrationManager({ eventId }: { eventId: string }) {
 
   useEffect(() => { fetch(`/api/events/${eventId}/registrations`).then((response) => response.json()).then((data) => { setEvent(data.event); setRegistrations(data.registrations ?? []); }); }, [eventId]);
   const visible = useMemo(() => registrations.filter((item) => `${item.firstName} ${item.lastName} ${item.email} ${item.uin}`.toLowerCase().includes(query.toLowerCase())), [registrations, query]);
-  const fieldValues = event?.formFields ?? [];
+  const fieldValues = event?.formFields.filter(isQuestion) ?? [];
   const hasSelectedRegistrants = selected.length > 0;
 
   async function sendEmail() {

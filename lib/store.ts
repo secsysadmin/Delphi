@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "@/lib/db";
 import { demoEvents, demoRegistrations } from "@/lib/demo-data";
-import { slugify } from "@/lib/utils";
+import { isQuestion, slugify } from "@/lib/utils";
 import type { EventInput, EventSlot, FormField, Registration, RegistrationEvent } from "@/types";
 
 type DemoState = { events: RegistrationEvent[]; registrations: Registration[] };
@@ -129,7 +129,7 @@ function cleanInput(input: EventInput): EventInput {
     tamuEmailOnly: Boolean(input.tamuEmailOnly),
     showDateInConfirmation: input.showDateInConfirmation !== false,
     sortOrder: Number(input.sortOrder ?? 0),
-    formFields: (input.formFields ?? []).map((field, index) => ({ ...field, id: field.id || `field-${Date.now()}-${index}`, label: field.label.trim() })),
+    formFields: (input.formFields ?? []).map((field, index) => ({ ...field, id: field.id || `field-${Date.now()}-${index}`, label: field.label.trim(), ...(isQuestion(field) ? {} : { required: false, options: undefined }) })),
     slots: (input.slots ?? []).map((slot, index) => ({ ...slot, id: slot.id || randomUUID(), label: slot.label.trim() || `Session ${index + 1}`, capacity: input.capacityMode === "slot" ? Number(slot.capacity) || null : null })),
   };
 }
@@ -277,7 +277,7 @@ export async function createRegistration(eventId: string, input: RegistrationInp
   }
   const slot = input.slotId ? event.slots.find((item) => item.id === input.slotId) : null;
   if (event.slots.length && !slot) throw new Error("Select a time slot.");
-  for (const field of event.formFields) {
+  for (const field of event.formFields.filter(isQuestion)) {
     const value = input.answers?.[field.id];
     if (field.required && (value === undefined || value === "" || (Array.isArray(value) && !value.length) || value === false)) {
       throw new Error(`${field.label} is required.`);

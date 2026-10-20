@@ -1,3 +1,7 @@
+import type { FormField } from "@/types";
+
+export const isQuestion = (field: FormField) => field.type !== "section";
+
 export function slugify(value: string) {
   return value
     .toLowerCase()

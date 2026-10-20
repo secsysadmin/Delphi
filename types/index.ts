@@ -8,7 +8,8 @@ export type QuestionType =
   | "multiselect"
   | "radio"
   | "checkbox"
-  | "date";
+  | "date"
+  | "section";
 
 export type FormField = {
   id: string;

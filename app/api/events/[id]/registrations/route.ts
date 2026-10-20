@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { getEvent, getRegistrations } from "@/lib/store";
-import { csvEscape } from "@/lib/utils";
+import { csvEscape, isQuestion } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const [event, registrations] = await Promise.all([getEvent(id, true), getRegistrations(id)]);
   if (!event) return NextResponse.json({ error: "Event not found." }, { status: 404 });
   if (new URL(request.url).searchParams.get("format") === "csv") {
-    const fields = event.formFields;
+    const fields = event.formFields.filter(isQuestion);
     const header = ["First name", "Last name", "Email", "UIN", "Status", "Time slot", "Registered at", ...fields.map((field) => field.label)];
     const lines = registrations.map((registration) => {
       const slot = event.slots.find((item) => item.id === registration.slotId)?.label ?? "";

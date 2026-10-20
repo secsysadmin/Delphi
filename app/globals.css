@@ -132,6 +132,9 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon-2); box-s
 label em { color: #a3262c; font-style: normal; }
 label > small { color: var(--muted); font-weight: 500; }
 .custom-field > span { font-weight: 750; }
+.form-section-block { padding-top: 6px; }
+.form-section-block h3 { margin: 0 0 8px; color: var(--ink); font-family: var(--font-serif); font-size: 1.35rem; line-height: 1.25; }
+.form-section-block p { margin: 0; color: #393532; font-size: .9rem; line-height: 1.6; white-space: pre-line; }
 .choice-list { display: flex; flex-wrap: wrap; gap: 10px; }
 .choice-list label { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 5px; padding: 10px 13px; background: white; cursor: pointer; }
 .choice-list input, .checkbox-row input { width: auto; }
