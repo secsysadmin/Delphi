@@ -534,6 +534,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .event-name small, .event-table__row small { font-family: var(--font-sans), Arial, sans-serif; }
 .event-table__header, .tabs button, .table-tools, .row-actions { font-family: var(--font-sans), Arial, sans-serif; }
 .row-actions a:hover, .row-actions button:hover { border-color: var(--maroon); color: var(--maroon); background: rgba(80, 0, 0, .045); }
+.row-actions button:disabled, .row-actions button:disabled:hover { opacity: .35; cursor: default; border-color: var(--line); color: #625c56; background: transparent; }
 
 /* Administrator access remains part of the dashboard work surface. */
 .admin-users-page { padding-bottom: 108px; }

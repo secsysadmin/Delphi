@@ -43,7 +43,15 @@ export function confirmationColors(eventColor?: string | null, slotColor?: strin
   return { background, foreground };
 }
 
+export function formatAnswer(value: unknown) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return value === undefined || value === null ? "" : String(value);
+}
+
 export function csvEscape(value: unknown) {
-  const text = Array.isArray(value) ? value.join("; ") : String(value ?? "");
-  return `"${text.replaceAll('"', '""')}"`;
+  const text = Array.isArray(value) ? value.join("; ") : typeof value === "boolean" ? formatAnswer(value) : String(value ?? "");
+  // A leading = + - @ makes spreadsheets run the cell as a formula; registrants control these values.
+  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
 }

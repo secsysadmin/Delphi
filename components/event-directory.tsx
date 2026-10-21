@@ -10,6 +10,7 @@ const chicagoDateParts = new Intl.DateTimeFormat("en-US", { timeZone: "America/C
 // Calendar dates are calendar values, not instants. Keep their arithmetic and
 // formatting in UTC so the server and browser produce identical initial HTML.
 const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const dayLabel = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 function dayKey(date: Date) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
@@ -32,6 +33,7 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
+  const [loadError, setLoadError] = useState(false);
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
   const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
@@ -40,7 +42,11 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
   const nextRevealAtRef = useRef(0);
 
   useEffect(() => {
-    fetch("/api/events").then((response) => response.json()).then((data) => setEvents(data.events ?? [])).finally(() => setLoading(false));
+    fetch("/api/events").then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setEvents(data.events ?? []);
+    }).catch(() => setLoadError(true)).finally(() => setLoading(false));
   }, []);
 
   const visible = useMemo(() => {
@@ -176,6 +182,7 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
           <div className="event-grid">
             {visible.map((event) => {
               const phase = eventPhase(event);
+              const openSlots = event.slots.filter((slot) => slot.remaining !== 0).length;
               const soldOut = event.capacityMode === "event" ? event.remaining === 0 : Boolean(event.slots.length && event.slots.every((slot) => slot.remaining === 0));
               return (
                 <Link
@@ -189,13 +196,13 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
                   <div className="event-card__stripe" />
                   <div className="event-card__top"><EventStatus phase={phase} soldOut={soldOut} /><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
                   <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p></div>
-                  <ul><li><CalendarDays size={17} />{formatDate(event.startAt, true)}</li><li><MapPin size={17} />{event.location}</li>{event.slots.length > 0 && <li><Clock3 size={17} />{event.slots.length} time slots available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spots remaining</li>}</ul>
+                  <ul><li><CalendarDays size={17} />{formatDate(event.startAt, true)}</li><li><MapPin size={17} />{event.location}</li>{openSlots > 0 && <li><Clock3 size={17} />{openSlots} time slot{openSlots === 1 ? "" : "s"} available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spot{event.remaining === 1 ? "" : "s"} remaining</li>}</ul>
                   <span className="event-card__link">View event <ArrowRight size={20} /></span>
                 </Link>
               );
             })}
           </div>
-        ) : <div className="empty-state"><CalendarDays size={36} /><h3>No matching events</h3><p>Try another search, or check back soon for new opportunities.</p></div>}
+        ) : loadError ? <div className="empty-state"><CalendarDays size={36} /><h3>Events couldn&apos;t load</h3><p>Refresh the page to try again.</p></div> : <div className="empty-state"><CalendarDays size={36} /><h3>No matching events</h3><p>Try another search, or check back soon for new opportunities.</p></div>}
       </section>
       <section id="event-calendar" className="calendar-section" aria-labelledby="calendar-heading">
         <div className="shell">
@@ -211,7 +218,7 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
             {calendarDays.map((day, index) => {
               const dayEvents = day ? calendarEvents[dayKey(day)] ?? [] : [];
-              return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${monthLabel.format(day)} ${day.getUTCDate()}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
+              return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${dayLabel.format(day)}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
                 {day && <span className="calendar-grid__date">{day.getUTCDate()}</span>}
                 {dayEvents.length > 0 && <span className="calendar-grid__events">{dayEvents.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatDate(event.startAt, true)}, ${event.location}`}>
                   <span aria-hidden="true">{event.title}</span>

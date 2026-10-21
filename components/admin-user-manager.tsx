@@ -43,7 +43,7 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
     setMessage("Administrator removed.");
   }
 
-  return <main className="admin-shell shell admin-users-page">
+  return <div className="admin-shell shell admin-users-page">
     <Link className="back-link" href="/admin"><ArrowLeft size={15} /> Dashboard</Link>
     <div className="admin-users-heading">
       <div><h1>Manage administrators</h1><p>Whitelist the Google accounts that can sign in to create events, manage registrations, and send participant email.</p></div>
@@ -78,5 +78,5 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
       onConfirm={() => pendingRemoval && removeUser(pendingRemoval)}
       onCancel={() => setPendingRemoval(null)}
     />
-  </main>;
+  </div>;
 }

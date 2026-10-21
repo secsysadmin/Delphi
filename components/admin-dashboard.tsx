@@ -14,9 +14,14 @@ export function AdminDashboard({ preview }: { preview: boolean }) {
   const [tab, setTab] = useState<Tab>("active");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    fetch("/api/events?scope=all").then((response) => response.json()).then((data) => setEvents(data.events ?? [])).finally(() => setLoading(false));
+    fetch("/api/events?scope=all").then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setEvents(data.events ?? []);
+    }).catch(() => setLoadError(true)).finally(() => setLoading(false));
   }, []);
 
   const filtered = useMemo(() => {
@@ -31,14 +36,18 @@ export function AdminDashboard({ preview }: { preview: boolean }) {
     return list;
   }, [events, tab, query, sort]);
 
+  // Swap with the neighbor shown in this tab, not with whatever hidden event sits next to it overall.
   async function move(id: string, direction: -1 | 1) {
+    const neighbor = filtered[filtered.findIndex((event) => event.id === id) + direction];
+    if (!neighbor) return;
+    const previous = events;
     const ordered = [...events].sort((a, b) => a.sortOrder - b.sortOrder);
-    const index = ordered.findIndex((event) => event.id === id);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= ordered.length) return;
-    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+    const from = ordered.findIndex((event) => event.id === id);
+    const to = ordered.findIndex((event) => event.id === neighbor.id);
+    [ordered[from], ordered[to]] = [ordered[to], ordered[from]];
     setEvents(ordered.map((event, position) => ({ ...event, sortOrder: position + 1 })));
-    await fetch("/api/events/reorder", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: ordered.map((event) => event.id) }) });
+    const response = await fetch("/api/events/reorder", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: ordered.map((event) => event.id) }) }).catch(() => null);
+    if (!response?.ok) setEvents(previous);
   }
 
   const active = events.filter((event) => event.status === "published" && eventPhase(event) !== "past");
@@ -52,9 +61,9 @@ export function AdminDashboard({ preview }: { preview: boolean }) {
       </div>
       <section className="admin-panel">
         <div className="admin-panel__head"><div className="tabs" role="tablist"><button role="tab" aria-selected={tab === "active"} className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>Active</button><button role="tab" aria-selected={tab === "past"} className={tab === "past" ? "active" : ""} onClick={() => setTab("past")}>Past</button><button role="tab" aria-selected={tab === "drafts"} className={tab === "drafts" ? "active" : ""} onClick={() => setTab("drafts")}>Drafts &amp; archived</button></div><div className="table-tools"><label className="search-box search-box--small"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events" aria-label="Search events" /></label><select aria-label="Sort events" value={sort} onChange={(event) => setSort(event.target.value)}><option value="custom">Custom order</option><option value="date">Date</option><option value="alphabetical">Alphabetical</option></select></div></div>
-        {loading ? <div className="admin-loading">Loading events…</div> : filtered.length ? <div className="event-table"><div className="event-table__header"><span>Event</span><span>Registration</span><span>Capacity</span><span>Actions</span></div>{filtered.map((event) => {
+        {loading ? <div className="admin-loading">Loading events…</div> : loadError ? <div className="empty-state"><CalendarCheck /><h3>Events couldn&apos;t load</h3><p>Refresh the page to try again.</p></div> : filtered.length ? <div className="event-table"><div className="event-table__header"><span>Event</span><span>Registration</span><span>Capacity</span><span>Actions</span></div>{filtered.map((event, position) => {
           const phase = eventPhase(event);
-          return <div className="event-table__row" key={event.id}><div className="event-name"><span className="event-dot" style={{ background: event.accentColor }} /><div><strong>{event.title}</strong><small>{formatDate(event.startAt, true)} · {event.location}</small></div></div><div><span className={`status-pill status-pill--${phase}`}>{event.status === "draft" ? "Draft" : event.status === "archived" ? "Archived" : phase === "open" ? "Open" : phase === "upcoming" ? "Scheduled" : "Closed"}</span><small>{formatDate(event.registrationCloseAt)}</small></div><div><strong>{event.registeredCount}</strong><small>{event.capacityMode === "event" && event.capacity ? `of ${event.capacity}` : event.capacityMode === "slot" ? "across slots" : "registered"}</small></div><div className="row-actions">{sort === "custom" && <span className="reorder-actions"><button onClick={() => move(event.id, -1)} aria-label={`Move ${event.title} up`} title="Move up"><ArrowUp /></button><button onClick={() => move(event.id, 1)} aria-label={`Move ${event.title} down`} title="Move down"><ArrowDown /></button></span>}<Link href={`/admin/events/${event.id}/registrations`} aria-label={`View registrations for ${event.title}`} title="Registrations and email"><Mail /></Link><Link href={`/admin/events/${event.id}/edit`} aria-label={`Edit ${event.title}`} title="Edit event"><Pencil /></Link><Link href={`/events/${event.slug}`} aria-label={`View ${event.title}`} title="View event"><ChevronRight /></Link></div></div>;
+          return <div className="event-table__row" key={event.id}><div className="event-name"><span className="event-dot" style={{ background: event.accentColor }} /><div><strong>{event.title}</strong><small>{formatDate(event.startAt, true)} · {event.location}</small></div></div><div><span className={`status-pill status-pill--${phase}`}>{event.status === "draft" ? "Draft" : event.status === "archived" ? "Archived" : phase === "open" ? "Open" : phase === "upcoming" ? "Scheduled" : "Closed"}</span><small>{formatDate(event.registrationCloseAt)}</small></div><div><strong>{event.registeredCount}</strong><small>{event.capacityMode === "event" && event.capacity ? `of ${event.capacity}` : event.capacityMode === "slot" ? "across slots" : "registered"}</small></div><div className="row-actions">{sort === "custom" && <span className="reorder-actions"><button onClick={() => move(event.id, -1)} disabled={position === 0} aria-label={`Move ${event.title} up`} title="Move up"><ArrowUp /></button><button onClick={() => move(event.id, 1)} disabled={position === filtered.length - 1} aria-label={`Move ${event.title} down`} title="Move down"><ArrowDown /></button></span>}<Link href={`/admin/events/${event.id}/registrations`} aria-label={`View registrations for ${event.title}`} title="Registrations and email"><Mail /></Link><Link href={`/admin/events/${event.id}/edit`} aria-label={`Edit ${event.title}`} title="Edit event"><Pencil /></Link><Link href={`/events/${event.slug}`} aria-label={`View ${event.title}`} title="View event"><ChevronRight /></Link></div></div>;
         })}</div> : <div className="empty-state"><CalendarCheck /><h3>No events here yet</h3><p>Create an event or try a different tab.</p></div>}
       </section>
     </div>

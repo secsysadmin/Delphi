@@ -6,8 +6,9 @@ import { sendConfirmation } from "@/lib/email";
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
 function rateLimited(request: Request) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "local";
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
   const now = Date.now();
+  if (attempts.size > 5000) attempts.forEach((entry, key) => { if (entry.resetAt < now) attempts.delete(key); });
   const current = attempts.get(ip);
   if (!current || current.resetAt < now) {
     attempts.set(ip, { count: 1, resetAt: now + 60_000 });
@@ -34,6 +35,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await updateEmailStatus(result.registration.id, emailStatus);
     return NextResponse.json({ registration: { ...result.registration, emailStatus }, emailStatus }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Registration failed." }, { status: 400 });
+    // Postgres errors carry a code; only our own validation messages are safe to show students.
+    const code = (error as { code?: string })?.code;
+    if (code === "23505") return NextResponse.json({ error: "This email is already registered for the event." }, { status: 409 });
+    if (code || !(error instanceof Error)) {
+      console.error("Registration failed", error);
+      return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 500 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 }

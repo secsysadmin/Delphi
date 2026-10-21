@@ -69,7 +69,11 @@ export function EventRegistration({ slug }: { slug: string }) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slotId: slotId || null, firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"), uin: form.get("uin"), answers }),
-    });
+    }).catch(() => null);
+    if (!response) {
+      setSending(false);
+      return setError("Could not reach the registration service. Check your connection and try again.");
+    }
     let data: { error?: string };
     try {
       data = await readApiJson<{ error?: string }>(response);
@@ -80,12 +84,14 @@ export function EventRegistration({ slug }: { slug: string }) {
     setSending(false);
     if (!response.ok) return setError(data.error || "Registration failed.");
     setComplete(true);
+    window.scrollTo({ top: 0 });
   }
 
   if (loading) return <div className="shell page-loading">Loading event…</div>;
   if (!event) return <div className="shell empty-state page-space"><h2>Event not found</h2><p>{error || "This event may no longer be available."}</p><Link href="/" className="button button--primary">Back to events</Link></div>;
   const phase = eventPhase(event);
-  const canRegister = phase === "open";
+  const full = event.capacityMode === "event" ? event.remaining === 0 : event.capacityMode === "slot" && event.slots.length > 0 && event.slots.every((slot) => slot.remaining === 0);
+  const canRegister = phase === "open" && !full;
 
   if (complete) return (
     <section className="shell confirmation-page">
@@ -107,12 +113,12 @@ export function EventRegistration({ slug }: { slug: string }) {
         <aside className="event-facts">
           <div><CalendarDays /><span><small>Date</small>{formatDate(event.startAt, true)}</span></div>
           <div><MapPin /><span><small>Location</small>{event.location}</span></div>
-          <div><Users /><span><small>Availability</small>{event.remaining === null ? event.capacityMode === "slot" ? "Varies by session" : "No capacity limit" : `${event.remaining} spots remaining`}</span></div>
+          <div><Users /><span><small>Availability</small>{event.remaining === null ? event.capacityMode === "slot" ? "Varies by session" : "No capacity limit" : `${event.remaining} spot${event.remaining === 1 ? "" : "s"} remaining`}</span></div>
           <div className="event-window"><small>Registration window</small><span>{formatDate(event.registrationOpenAt, true)}</span><span>through {formatDate(event.registrationCloseAt, true)}</span></div>
         </aside>
         <div className="registration-column">
           <section className="detail-description"><h2>About this event</h2><p>{event.description}</p></section>
-          {!canRegister ? <div className="notice-card"><Clock3 /><div><h3>{phase === "upcoming" ? "Registration opens soon" : "Registration is closed"}</h3><p>{phase === "upcoming" ? `Come back ${formatDate(event.registrationOpenAt, true)}.` : "This event is no longer accepting registrations."}</p></div></div> : (
+          {!canRegister ? <div className="notice-card"><Clock3 /><div><h3>{phase === "open" && full ? "This event is full" : phase === "upcoming" ? "Registration opens soon" : "Registration is closed"}</h3><p>{phase === "open" && full ? "Every spot has been claimed. Check back in case a spot opens up." : phase === "upcoming" ? `Come back ${formatDate(event.registrationOpenAt, true)}.` : "This event is no longer accepting registrations."}</p></div></div> : (
             <form className="registration-form" onSubmit={submit} noValidate>
               {event.slots.length > 0 && <fieldset><legend><span>01</span> Choose a time</legend><p className="fieldset-intro">Select one available session.</p><div className="slot-grid" data-field data-required-message="Choose a time slot">{event.slots.map((slot) => {
                 const full = slot.remaining === 0;

@@ -106,17 +106,23 @@ export async function sendConfirmation(registration: Registration, event: Regist
 }
 
 export async function sendBroadcast(registrations: Registration[], event: RegistrationEvent, subject: string, body: string) {
-  if (!emailProvider()) return { sent: registrations.length, preview: true };
+  if (!emailProvider()) return { sent: registrations.length, failed: 0, preview: true };
+  let failed = 0;
   for (const registration of registrations) {
     const slot = event.slots.find((item) => item.id === registration.slotId) ?? null;
     const renderedSubject = renderTemplate(subject, registration, event, slot);
     const renderedBody = renderTemplate(body, registration, event, slot);
-    await deliverEmail({
-      to: registration.email,
-      subject: renderedSubject,
-      text: renderedBody,
-      html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><div style="height:8px;background:#4d0710"></div><div style="font-size:16px;line-height:1.7;white-space:pre-line;padding:24px 4px">${escapeHtml(renderedBody)}</div><p style="color:#777;font-size:12px">SEC Registration Hub · Texas A&M University</p></div>`,
-    });
+    try {
+      await deliverEmail({
+        to: registration.email,
+        subject: renderedSubject,
+        text: renderedBody,
+        html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><div style="height:8px;background:#4d0710"></div><div style="font-size:16px;line-height:1.7;white-space:pre-line;padding:24px 4px">${escapeHtml(renderedBody)}</div><p style="color:#777;font-size:12px">SEC Registration Hub · Texas A&M University</p></div>`,
+      });
+    } catch (error) {
+      failed++;
+      console.error(`Broadcast to registration ${registration.id} failed`, error);
+    }
   }
-  return { sent: registrations.length, preview: false };
+  return { sent: registrations.length - failed, failed, preview: false };
 }

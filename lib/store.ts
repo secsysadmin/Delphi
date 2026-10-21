@@ -108,37 +108,111 @@ export async function getEvent(idOrSlug: string, includeDrafts = false) {
   return events.find((event) => event.id === idOrSlug || event.slug === idOrSlug) ?? null;
 }
 
+const STATUSES = ["draft", "published", "archived"] as const;
+const CAPACITY_MODES = ["event", "slot", "unlimited"] as const;
+const QUESTION_TYPES = ["short_text", "long_text", "email", "phone", "number", "select", "multiselect", "radio", "checkbox", "date", "section"] as const;
+const CHOICE_TYPES = new Set(["select", "radio", "multiselect"]);
+
+const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max);
+
+function isoDate(value: unknown, label: string) {
+  const date = new Date(String(value ?? ""));
+  if (!value || Number.isNaN(date.getTime())) throw new Error(`${label} is missing or invalid.`);
+  return date.toISOString();
+}
+
+function positiveInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
 function cleanInput(input: EventInput): EventInput {
-  const title = String(input.title ?? "").trim();
+  const title = text(input.title, 160);
   if (!title) throw new Error("Event title is required.");
-  if (!input.startAt || !input.endAt || !input.registrationOpenAt || !input.registrationCloseAt) {
-    throw new Error("Event and registration dates are required.");
+  const startAt = isoDate(input.startAt, "Event start");
+  const endAt = isoDate(input.endAt, "Event end");
+  const registrationOpenAt = isoDate(input.registrationOpenAt, "Registration open time");
+  const registrationCloseAt = isoDate(input.registrationCloseAt, "Registration close time");
+  if (endAt <= startAt) throw new Error("Event end time must be after its start time.");
+  if (registrationCloseAt <= registrationOpenAt) throw new Error("Registration close time must be after its open time.");
+  const status = STATUSES.includes(input.status) ? input.status : "draft";
+  const capacityMode = CAPACITY_MODES.includes(input.capacityMode) ? input.capacityMode : "unlimited";
+  const capacity = capacityMode === "event" ? positiveInteger(input.capacity) : null;
+  if (capacityMode === "event" && !capacity) throw new Error("Set a valid event capacity.");
+  if (capacityMode === "slot" && !(input.slots ?? []).length) throw new Error("Add at least one time slot for slot capacity.");
+  const slots = (input.slots ?? []).map((slot, index) => {
+    const label = text(slot.label, 120) || `Session ${index + 1}`;
+    const slotStart = isoDate(slot.startAt, `${label} start`);
+    const slotEnd = isoDate(slot.endAt, `${label} end`);
+    if (slotEnd <= slotStart) throw new Error(`${label} must end after it starts.`);
+    return {
+      ...slot,
+      id: slot.id || randomUUID(),
+      label,
+      startAt: slotStart,
+      endAt: slotEnd,
+      location: text(slot.location, 200),
+      capacity: capacityMode === "slot" ? positiveInteger(slot.capacity) : null,
+      accentColor: slot.accentColor && /^#[0-9a-f]{6}$/i.test(slot.accentColor) ? slot.accentColor : undefined,
+    };
+  });
+  const formFields = (input.formFields ?? []).filter((field) => QUESTION_TYPES.includes(field.type)).map((field, index) => {
+    const options = CHOICE_TYPES.has(field.type) ? [...new Set((field.options ?? []).map((option) => text(option, 200)).filter(Boolean))] : undefined;
+    return {
+      ...field,
+      id: field.id || `field-${Date.now()}-${index}`,
+      label: text(field.label, 300),
+      helpText: field.helpText ? String(field.helpText).slice(0, 10000) : undefined,
+      placeholder: field.placeholder ? text(field.placeholder, 300) : undefined,
+      required: isQuestion(field) ? Boolean(field.required) : false,
+      options,
+    };
+  });
+  if (status === "published") {
+    const unlabeled = formFields.find((field) => isQuestion(field) && !field.label);
+    if (unlabeled) throw new Error("Every registration question needs a question title.");
+    const noOptions = formFields.find((field) => CHOICE_TYPES.has(field.type) && !field.options?.length);
+    if (noOptions) throw new Error(`Add at least one option to "${noOptions.label}".`);
   }
-  if (new Date(input.endAt) <= new Date(input.startAt)) throw new Error("Event end time must be after its start time.");
-  if (new Date(input.registrationCloseAt) <= new Date(input.registrationOpenAt)) throw new Error("Registration close time must be after its open time.");
-  if (input.capacityMode === "event" && (!input.capacity || input.capacity < 1)) throw new Error("Set a valid event capacity.");
-  if (input.capacityMode === "slot" && input.slots.length === 0) throw new Error("Add at least one time slot for slot capacity.");
   return {
     ...input,
     title,
-    slug: slugify(input.slug || title),
-    summary: String(input.summary ?? "").trim(),
-    description: String(input.description ?? "").trim(),
-    location: String(input.location ?? "").trim(),
+    slug: slugify(input.slug || title) || "event",
+    status,
+    startAt,
+    endAt,
+    registrationOpenAt,
+    registrationCloseAt,
+    summary: text(input.summary, 180),
+    description: text(input.description, 20000),
+    location: text(input.location, 200),
     accentColor: /^#[0-9a-f]{6}$/i.test(input.accentColor) ? input.accentColor : "#500000",
-    capacity: input.capacityMode === "event" ? Number(input.capacity) : null,
+    capacityMode,
+    capacity,
     tamuEmailOnly: Boolean(input.tamuEmailOnly),
     uinRequired: Boolean(input.uinRequired),
     showDateInConfirmation: input.showDateInConfirmation !== false,
-    sortOrder: Number(input.sortOrder ?? 0),
-    formFields: (input.formFields ?? []).map((field, index) => ({ ...field, id: field.id || `field-${Date.now()}-${index}`, label: field.label.trim(), ...(isQuestion(field) ? {} : { required: false, options: undefined }) })),
-    slots: (input.slots ?? []).map((slot, index) => ({ ...slot, id: slot.id || randomUUID(), label: slot.label.trim() || `Session ${index + 1}`, capacity: input.capacityMode === "slot" ? Number(slot.capacity) || null : null })),
+    sortOrder: Number(input.sortOrder) || 0,
+    confirmationSubject: text(input.confirmationSubject, 200) || "Registration confirmed: {{event}}",
+    confirmationBody: String(input.confirmationBody ?? "").slice(0, 20000) || "Howdy {{firstName}}! Your registration for {{event}} is confirmed.",
+    formFields,
+    slots,
   };
 }
 
+// Event URLs must be unique; a repeated title gets "-2", "-3", ...
+async function uniqueSlug(slug: string, eventId: string) {
+  const taken = new Set(sql
+    ? (await sql<{ slug: string }[]>`select slug from sec_registration.events where id != ${eventId} and (slug = ${slug} or slug like ${`${slug}-%`})`).map((row) => row.slug)
+    : demo.events.filter((event) => event.id !== eventId).map((event) => event.slug));
+  if (!taken.has(slug)) return slug;
+  for (let n = 2; ; n++) if (!taken.has(`${slug}-${n}`)) return `${slug}-${n}`;
+}
+
 export async function saveEvent(rawInput: EventInput, id?: string) {
-  const input = cleanInput(rawInput);
   const eventId = id || randomUUID();
+  const cleaned = cleanInput(rawInput);
+  const input = { ...cleaned, slug: await uniqueSlug(cleaned.slug, eventId) };
   const timestamp = new Date().toISOString();
   if (!sql) {
     const current = demo.events.find((item) => item.id === eventId);
@@ -263,41 +337,64 @@ type RegistrationInput = {
   lastName: string;
   email: string;
   uin?: string;
-  answers: Record<string, string | string[] | boolean>;
+  answers: Record<string, unknown>;
 };
 
-export async function createRegistration(eventId: string, input: RegistrationInput) {
+type Answer = string | string[] | boolean;
+
+// Keep only answers to this event's questions, in the shape each question type expects.
+function cleanAnswers(fields: FormField[], raw: unknown) {
+  const source = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const answers: Record<string, Answer> = {};
+  for (const field of fields.filter(isQuestion)) {
+    const value = source[field.id];
+    let answer: Answer | undefined;
+    if (field.type === "checkbox") answer = value === true;
+    else if (field.type === "multiselect") answer = Array.isArray(value) ? value.map(String).filter((item) => field.options?.includes(item)) : [];
+    else if (typeof value === "string" && value.trim()) {
+      answer = value.trim().slice(0, field.type === "long_text" ? 5000 : 500);
+      if ((field.type === "select" || field.type === "radio") && !field.options?.includes(answer)) throw new Error(`Choose one of the options for ${field.label}.`);
+    }
+    const empty = answer === undefined || answer === false || (Array.isArray(answer) && !answer.length);
+    if (field.required && empty) throw new Error(`${field.label} is required.`);
+    if (answer !== undefined) answers[field.id] = answer;
+  }
+  return answers;
+}
+
+export async function createRegistration(eventId: string, rawInput: RegistrationInput) {
   const event = await getEvent(eventId);
   if (!event) throw new Error("Event not found.");
   const now = Date.now();
   if (new Date(event.registrationOpenAt).getTime() > now) throw new Error("Registration has not opened yet.");
   if (new Date(event.registrationCloseAt).getTime() < now) throw new Error("Registration is closed.");
-  if (!input.firstName?.trim() || !input.lastName?.trim()) throw new Error("First and last name are required.");
-  if (!/^\S+@\S+\.\S+$/.test(input.email ?? "")) throw new Error("Enter a valid email address.");
-  if (event.tamuEmailOnly && !input.email.trim().toLowerCase().endsWith("@tamu.edu")) {
+  const input = {
+    slotId: rawInput.slotId ? String(rawInput.slotId) : null,
+    firstName: text(rawInput.firstName, 100),
+    lastName: text(rawInput.lastName, 100),
+    email: text(rawInput.email, 254).toLowerCase(),
+    uin: text(rawInput.uin, 20),
+    answers: cleanAnswers(event.formFields, rawInput.answers),
+  };
+  if (!input.firstName || !input.lastName) throw new Error("First and last name are required.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) throw new Error("Enter a valid email address.");
+  if (event.tamuEmailOnly && !input.email.endsWith("@tamu.edu")) {
     throw new Error("This event is only open to @tamu.edu email addresses.");
   }
-  const uin = input.uin?.trim() ?? "";
-  if (uin && !/^\d{9}$/.test(uin)) throw new Error("Enter your 9-digit UIN.");
-  if (event.uinRequired && !uin) throw new Error("UIN is required.");
+  if (input.uin && !/^\d{9}$/.test(input.uin)) throw new Error("Enter your 9-digit UIN.");
+  if (event.uinRequired && !input.uin) throw new Error("UIN is required.");
   const slot = input.slotId ? event.slots.find((item) => item.id === input.slotId) : null;
   if (event.slots.length && !slot) throw new Error("Select a time slot.");
-  for (const field of event.formFields.filter(isQuestion)) {
-    const value = input.answers?.[field.id];
-    if (field.required && (value === undefined || value === "" || (Array.isArray(value) && !value.length) || value === false)) {
-      throw new Error(`${field.label} is required.`);
-    }
-  }
   const id = randomUUID();
   if (!sql) {
-    if (demo.registrations.some((item) => item.eventId === eventId && item.email.toLowerCase() === input.email.toLowerCase() && item.status !== "cancelled")) {
+    if (demo.registrations.some((item) => item.eventId === eventId && item.email.toLowerCase() === input.email && item.status !== "cancelled")) {
       throw new Error("This email is already registered for the event.");
     }
     if (event.capacityMode === "event" && event.remaining !== null && event.remaining <= 0) throw new Error("This event is full.");
     if (event.capacityMode === "slot" && slot?.remaining !== null && slot?.remaining !== undefined && slot.remaining <= 0) throw new Error("This time slot is full.");
     const registration: Registration = {
-      id, eventId, slotId: slot?.id ?? null, firstName: input.firstName.trim(), lastName: input.lastName.trim(),
-      email: input.email.trim().toLowerCase(), uin: input.uin?.trim() ?? "", answers: input.answers ?? {},
+      id, eventId, slotId: slot?.id ?? null, firstName: input.firstName, lastName: input.lastName,
+      email: input.email, uin: input.uin, answers: input.answers,
       status: "confirmed", emailStatus: "pending", createdAt: new Date().toISOString(),
     };
     demo.registrations.push(registration);
@@ -329,8 +426,8 @@ export async function createRegistration(eventId: string, input: RegistrationInp
     }
     const rows = await tx<Record<string, unknown>[]>`
       insert into sec_registration.registrations (id, event_id, slot_id, first_name, last_name, email, uin, answers)
-      values (${id}, ${eventId}, ${slot?.id ?? null}, ${input.firstName.trim()}, ${input.lastName.trim()},
-        ${input.email.trim().toLowerCase()}, ${input.uin?.trim() ?? ""}, ${tx.json((input.answers ?? {}) as never)})
+      values (${id}, ${eventId}, ${slot?.id ?? null}, ${input.firstName}, ${input.lastName},
+        ${input.email}, ${input.uin}, ${tx.json(input.answers as never)})
       returning id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
         last_name as "lastName", email, uin, answers, status, email_status as "emailStatus", created_at as "createdAt"
     `;
