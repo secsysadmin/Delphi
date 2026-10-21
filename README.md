@@ -2,7 +2,7 @@
 
 A modern event registration platform for the Texas A&M Student Engineers' Council. It includes a public event catalog, capacity-safe registration, configurable forms and time slots, editable confirmation emails, exports, and an admin workspace.
 
-## Local setup
+## Local Setup
 
 ```bash
 npm install
@@ -22,11 +22,11 @@ Without environment variables, the app opens in a fully populated preview mode. 
 6. For the established SEC sender, add `EMAIL_PROVIDER=ses`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in Vercel. Set `EMAIL_FROM` to `Student Engineers' Council <no-reply@sec.tamu.edu>`. SES must have that address or domain verified, and the account must be out of the SES sandbox to send to unverified registrant addresses. Resend remains available as an alternative provider.
 7. Set `NEXT_PUBLIC_APP_URL` to the production URL and deploy.
 
-## Email template variables
+## Email Template Variables
 
 Use `{{firstName}}`, `{{name}}`, `{{event}}`, `{{slot}}`, `{{date}}`, `{{time}}`, and `{{room}}` in event or slot templates.
 
-## Wishlist coverage
+## Wishlist Coverage
 
 - Registration form builder with ten question types; forms remain editable after publishing
 - Alphabetical and custom event sorting with persistent manual reordering
