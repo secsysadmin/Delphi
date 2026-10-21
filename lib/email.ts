@@ -1,7 +1,7 @@
 import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
 import { Resend } from "resend";
 import type { EventSlot, Registration, RegistrationEvent } from "@/types";
-import { formatDate, formatTime } from "@/lib/utils";
+import { confirmationColors, formatDate, formatTime } from "@/lib/utils";
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" })[character]!);
 const defaultFrom = "Student Engineers' Council <no-reply@sec.tamu.edu>";
@@ -84,36 +84,33 @@ export function renderTemplate(template: string, registration: Registration, eve
   return Object.entries(replacements(registration, event, slot)).reduce((text, [key, value]) => text.replaceAll(key, value), template);
 }
 
+function whenAndWhere(event: RegistrationEvent, slot?: EventSlot | null) {
+  const start = slot?.startAt ?? event.startAt;
+  const timeRange = `${formatTime(start)} – ${formatTime(slot?.endAt ?? event.endAt)}`;
+  return { when: event.showDateInConfirmation !== false ? `${formatDate(start, false)}, ${timeRange}` : timeRange, room: slot?.location || event.location };
+}
+
 function emailHtml(body: string, registration: Registration, event: RegistrationEvent, slot?: EventSlot | null) {
-  const candidateAccent = slot?.accentColor || event.accentColor || "#f7f4f1";
-  // Maroon is the legacy default. Keep that default event panel cream, while a
-  // configured event or slot color now fills the complete event panel.
-  const accent = /^#[0-9a-f]{6}$/i.test(candidateAccent) && candidateAccent.toLowerCase() !== "#500000"
-    ? candidateAccent
-    : "#f7f4f1";
-  const channels = accent.slice(1).match(/.{2}/g)?.map((value) => Number.parseInt(value, 16)) ?? [247, 244, 241];
-  const foreground = (channels[0] * 299 + channels[1] * 587 + channels[2] * 114) / 1000 < 150 ? "#fff8ef" : "#242321";
-  const eventStart = slot?.startAt ?? event.startAt;
-  const eventEnd = slot?.endAt ?? event.endAt;
-  const room = slot?.location || event.location;
-  const showDate = event.showDateInConfirmation !== false;
-  const timeRange = `${formatTime(eventStart)} – ${formatTime(eventEnd)}`;
-  const whenLine = showDate ? `${formatDate(eventStart, false)}, ${timeRange}` : timeRange;
+  const { background: accent, foreground } = confirmationColors(event.accentColor, slot?.accentColor);
+  const { when: whenLine, room } = whenAndWhere(event, slot);
   return `<!doctype html><html><body style="margin:0;background:#f4f1ed;font-family:Arial,sans-serif;color:#242321"><div style="max-width:620px;margin:0 auto;padding:32px 18px"><div style="background:#4d0710;color:#fff;padding:24px 28px"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8">Student Engineers' Council</div><h1 style="font-size:24px;margin:8px 0 0">Registration Confirmed</h1></div><div style="background:#fff;padding:28px;border:1px solid #e4dfd8;border-top:0"><p style="font-size:16px;line-height:1.7;white-space:pre-line">${escapeHtml(renderTemplate(body, registration, event, slot))}</p><div style="margin:26px 0 8px;padding:20px;border:1px solid ${accent};background:${accent};color:${foreground}"><strong style="display:block;font-size:20px">${escapeHtml(event.title)}</strong>${slot ? `<span style="display:block;margin-top:6px">${escapeHtml(slot.label)}</span>` : ""}<span style="display:block;margin-top:6px">${escapeHtml(whenLine)}</span><span style="display:block;margin-top:4px">${escapeHtml(room)}</span></div><p style="font-size:12px;color:#6b6864;margin-top:28px">SEC Registration Hub · Texas A&M University</p></div></div></body></html>`;
 }
 
 export async function sendConfirmation(registration: Registration, event: RegistrationEvent, slot?: EventSlot | null) {
   const subject = renderTemplate(slot?.confirmationSubject || event.confirmationSubject, registration, event, slot);
   const body = slot?.confirmationBody || event.confirmationBody;
-  const id = await deliverEmail({ to: registration.email, subject, html: emailHtml(body, registration, event, slot), text: renderTemplate(body, registration, event, slot) });
+  const { when, room } = whenAndWhere(event, slot);
+  const text = [renderTemplate(body, registration, event, slot), "", event.title, slot?.label, when, room].filter((line) => line !== undefined && line !== null).join("\n");
+  const id = await deliverEmail({ to: registration.email, subject, html: emailHtml(body, registration, event, slot), text });
   return { status: id ? "sent" : "previewed", id };
 }
 
 export async function sendBroadcast(registrations: Registration[], event: RegistrationEvent, subject: string, body: string) {
   if (!emailProvider()) return { sent: registrations.length, preview: true };
   for (const registration of registrations) {
-    const renderedSubject = renderTemplate(subject, registration, event);
-    const renderedBody = renderTemplate(body, registration, event);
+    const slot = event.slots.find((item) => item.id === registration.slotId) ?? null;
+    const renderedSubject = renderTemplate(subject, registration, event, slot);
+    const renderedBody = renderTemplate(body, registration, event, slot);
     await deliverEmail({
       to: registration.email,
       subject: renderedSubject,

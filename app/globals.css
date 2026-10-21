@@ -130,6 +130,11 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon-2); box-s
 .form-stack { display: flex; flex-direction: column; gap: 18px; }
 .form-grid label, .form-stack label, .registration-form label:not(.slot-card):not(.choice-list label), .login-card label { display: flex; flex-direction: column; gap: 7px; color: #393532; font-size: .82rem; font-weight: 750; }
 label em { color: #a3262c; font-style: normal; }
+:is(input, select, textarea)[aria-invalid="true"] { border-color: #a3262c; box-shadow: 0 0 0 3px rgba(163,38,44,.12); }
+:is(input, select, textarea)[aria-invalid="true"]:focus { border-color: #a3262c; box-shadow: 0 0 0 3px rgba(163,38,44,.22); }
+input[type="checkbox"][aria-invalid="true"], input[type="radio"][aria-invalid="true"] { outline: 2px solid #a3262c; outline-offset: 2px; box-shadow: none; }
+.choice-list label:has(> [aria-invalid="true"]), .slot-card:has(> [aria-invalid="true"]) { border-color: #a3262c; }
+[data-error]::after { content: attr(data-error); grid-column: 1 / -1; color: #a3262c; font-size: .78rem; font-weight: 650; }
 label > small { color: var(--muted); font-weight: 500; }
 .custom-field > span { font-weight: 750; }
 .form-section-block { padding-top: 6px; }
@@ -282,6 +287,7 @@ label > small { color: var(--muted); font-weight: 500; }
 .email-preview > div:first-child strong { font-size: 1.15rem; }
 .email-preview > div:last-child { padding: 22px; }
 .email-preview p { white-space: pre-line; font-size: .82rem; line-height: 1.6; }
+.email-preview__note { display: block; margin-top: 10px; color: var(--muted); font-size: .74rem; }
 .email-preview section { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); padding: 13px; background: var(--paper); font-size: .78rem; }
 .editor-bottom-actions { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
 .danger-link { border: 0; color: #9b2529; background: transparent; font-size: .78rem; text-decoration: underline; }
@@ -477,7 +483,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 .back-link { color: #ead5b7; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
 .event-detail-layout { grid-template-columns: 300px minmax(0, 1fr); gap: 78px; padding: 68px 0 110px; }
 .event-facts { border: 0; border-block-start: 4px solid var(--maroon); border-radius: 0; background: transparent; box-shadow: none; }
-.event-facts > div:not(.event-window) { padding: 19px 0; }
+.event-facts > div:not(.event-window) { padding: 19px 18px; }
 .event-facts svg { color: var(--maroon); }
 .detail-description { margin-bottom: 50px; }
 .detail-description h2 { font-size: 3rem; font-weight: 500; letter-spacing: -.04em; }

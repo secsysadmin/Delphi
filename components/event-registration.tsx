@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CalendarDays, Check, Clock3, MapPin, Users } from "lucide-react";
 import { eventPhase, formatDate, formatTime } from "@/lib/utils";
 import { RichText } from "@/components/rich-text";
+import { validateFields } from "@/lib/form-validation";
 import type { FormField, RegistrationEvent } from "@/types";
 
 async function readApiJson<T extends { error?: string }>(response: Response): Promise<T> {
@@ -25,7 +26,7 @@ function Field({ field, value, onChange }: { field: FormField; value: string | s
   if (field.type === "radio") return <div className="choice-list">{field.options?.map((option) => <label key={option}><input type="radio" name={id} required={field.required} checked={value === option} onChange={() => onChange(option)} /><span>{option}</span></label>)}</div>;
   if (field.type === "multiselect") {
     const selected = Array.isArray(value) ? value : [];
-    return <div className="choice-list">{field.options?.map((option) => <label key={option}><input type="checkbox" checked={selected.includes(option)} onChange={(event) => onChange(event.target.checked ? [...selected, option] : selected.filter((item) => item !== option))} /><span>{option}</span></label>)}</div>;
+    return <div className="choice-list">{field.options?.map((option) => <label key={option}><input type="checkbox" required={field.required && !selected.length} checked={selected.includes(option)} onChange={(event) => onChange(event.target.checked ? [...selected, option] : selected.filter((item) => item !== option))} /><span>{option}</span></label>)}</div>;
   }
   if (field.type === "checkbox") return <label className="checkbox-row"><input type="checkbox" required={field.required} checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /><span>{field.placeholder || "Yes, I agree"}</span></label>;
   const inputType = ({ email: "email", phone: "tel", number: "number", date: "date" } as Record<string, string>)[field.type] || "text";
@@ -60,7 +61,7 @@ export function EventRegistration({ slug }: { slug: string }) {
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
-    if (!event) return;
+    if (!event || !validateFields(formEvent.currentTarget)) return;
     const form = new FormData(formEvent.currentTarget);
     setError("");
     setSending(true);
@@ -112,13 +113,13 @@ export function EventRegistration({ slug }: { slug: string }) {
         <div className="registration-column">
           <section className="detail-description"><h2>About this event</h2><p>{event.description}</p></section>
           {!canRegister ? <div className="notice-card"><Clock3 /><div><h3>{phase === "upcoming" ? "Registration opens soon" : "Registration is closed"}</h3><p>{phase === "upcoming" ? `Come back ${formatDate(event.registrationOpenAt, true)}.` : "This event is no longer accepting registrations."}</p></div></div> : (
-            <form className="registration-form" onSubmit={submit}>
-              {event.slots.length > 0 && <fieldset><legend><span>01</span> Choose a time</legend><p className="fieldset-intro">Select one available session.</p><div className="slot-grid">{event.slots.map((slot) => {
+            <form className="registration-form" onSubmit={submit} noValidate>
+              {event.slots.length > 0 && <fieldset><legend><span>01</span> Choose a time</legend><p className="fieldset-intro">Select one available session.</p><div className="slot-grid" data-field data-required-message="Choose a time slot">{event.slots.map((slot) => {
                 const full = slot.remaining === 0;
                 return <label key={slot.id} className={`slot-card ${slotId === slot.id ? "slot-card--selected" : ""} ${full ? "slot-card--full" : ""}`}><input type="radio" name="slot" value={slot.id} checked={slotId === slot.id} onChange={() => setSlotId(slot.id)} required disabled={full} /><span className="slot-card__check"><Check /></span><strong>{slot.label}</strong><span>{formatDate(slot.startAt)} · {formatTime(slot.startAt)}–{formatTime(slot.endAt)}</span><span><MapPin size={15} /> {slot.location}</span><small>{full ? "Full" : slot.remaining === null ? "Available" : `${slot.remaining} spots left`}</small></label>;
               })}</div></fieldset>}
-              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label>First name <em>*</em><input name="firstName" autoComplete="given-name" required /></label><label>Last name <em>*</em><input name="lastName" autoComplete="family-name" required /></label><label>Email address <em>*</em><input name="email" type="email" autoComplete="email" required placeholder="name@tamu.edu" pattern={event.tamuEmailOnly ? ".+@tamu\\.edu" : undefined} title={event.tamuEmailOnly ? "Use your @tamu.edu email address" : undefined} />{event.tamuEmailOnly && <small>This event requires an @tamu.edu email address.</small>}</label><label>UIN <small>(optional)</small><input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" /></label></div></fieldset>
-              {event.formFields.length > 0 && <fieldset><legend><span>{event.slots.length ? "03" : "02"}</span> Event questions</legend><div className="form-stack">{event.formFields.map((field) => field.type === "section" ? <div key={field.id} className="form-section-block">{field.label && <h3>{field.label}</h3>}{field.helpText && <RichText text={field.helpText} />}</div> : <label key={field.id} className="custom-field" htmlFor={`field-${field.id}`}><span>{field.label} {field.required && <em>*</em>}</span>{field.helpText && <small id={`field-${field.id}-help`}>{field.helpText}</small>}<Field field={field} value={answers[field.id]} onChange={(value) => setAnswers((current) => ({ ...current, [field.id]: value }))} /></label>)}</div></fieldset>}
+              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label>First name <em>*</em><input name="firstName" autoComplete="given-name" required /></label><label>Last name <em>*</em><input name="lastName" autoComplete="family-name" required /></label><label>Email address <em>*</em><input name="email" type="email" autoComplete="email" required placeholder="name@tamu.edu" pattern={event.tamuEmailOnly ? ".+@tamu\\.edu" : undefined} title={event.tamuEmailOnly ? "Use your @tamu.edu email address" : undefined} />{event.tamuEmailOnly && <small>This event requires an @tamu.edu email address.</small>}</label><label>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}<input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} /></label></div></fieldset>
+              {event.formFields.length > 0 && <fieldset><legend><span>{event.slots.length ? "03" : "02"}</span> Event questions</legend><div className="form-stack">{event.formFields.map((field) => field.type === "section" ? <div key={field.id} className="form-section-block">{field.label && <h3>{field.label}</h3>}{field.helpText && <RichText text={field.helpText} />}</div> : <label key={field.id} className="custom-field" data-field htmlFor={`field-${field.id}`}><span>{field.label} {field.required && <em>*</em>}</span>{field.helpText && <small id={`field-${field.id}-help`}>{field.helpText}</small>}<Field field={field} value={answers[field.id]} onChange={(value) => setAnswers((current) => ({ ...current, [field.id]: value }))} /></label>)}</div></fieldset>}
               {error && <div className="form-error" role="alert">{error}</div>}
               <button className="button button--primary button--large" disabled={sending}>{sending ? "Registering…" : "Complete registration"} <ArrowRightIcon /></button><p className="form-fine-print">You&apos;ll receive a confirmation with your date, time, and room details.</p>
             </form>

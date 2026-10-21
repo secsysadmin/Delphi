@@ -32,6 +32,7 @@ function mapEvent(row: Record<string, unknown>, slots: EventSlot[] = []): Regist
     capacityMode: row.capacityMode as RegistrationEvent["capacityMode"],
     capacity,
     tamuEmailOnly: Boolean(row.tamuEmailOnly),
+    uinRequired: Boolean(row.uinRequired),
     sortOrder: Number(row.sortOrder ?? 0),
     accentColor: String(row.accentColor ?? "#500000"),
     formFields: (row.formFields ?? []) as FormField[],
@@ -71,7 +72,7 @@ async function dbEvents(): Promise<RegistrationEvent[]> {
       e.start_at as "startAt", e.end_at as "endAt",
       e.registration_open_at as "registrationOpenAt",
       e.registration_close_at as "registrationCloseAt", e.status,
-      e.capacity_mode as "capacityMode", e.capacity, e.tamu_email_only as "tamuEmailOnly", e.sort_order as "sortOrder",
+      e.capacity_mode as "capacityMode", e.capacity, e.tamu_email_only as "tamuEmailOnly", e.uin_required as "uinRequired", e.sort_order as "sortOrder",
       e.accent_color as "accentColor", e.form_fields as "formFields",
       e.confirmation_subject as "confirmationSubject", e.confirmation_body as "confirmationBody",
       e.show_date_in_confirmation as "showDateInConfirmation",
@@ -127,6 +128,7 @@ function cleanInput(input: EventInput): EventInput {
     accentColor: /^#[0-9a-f]{6}$/i.test(input.accentColor) ? input.accentColor : "#500000",
     capacity: input.capacityMode === "event" ? Number(input.capacity) : null,
     tamuEmailOnly: Boolean(input.tamuEmailOnly),
+    uinRequired: Boolean(input.uinRequired),
     showDateInConfirmation: input.showDateInConfirmation !== false,
     sortOrder: Number(input.sortOrder ?? 0),
     formFields: (input.formFields ?? []).map((field, index) => ({ ...field, id: field.id || `field-${Date.now()}-${index}`, label: field.label.trim(), ...(isQuestion(field) ? {} : { required: false, options: undefined }) })),
@@ -162,18 +164,18 @@ export async function saveEvent(rawInput: EventInput, id?: string) {
   await sql.begin(async (tx) => {
     await tx`
       insert into sec_registration.events (id, slug, title, summary, description, location, start_at, end_at,
-        registration_open_at, registration_close_at, status, capacity_mode, capacity, tamu_email_only, sort_order,
+        registration_open_at, registration_close_at, status, capacity_mode, capacity, tamu_email_only, uin_required, sort_order,
         accent_color, form_fields, confirmation_subject, confirmation_body, show_date_in_confirmation, updated_at)
       values (${eventId}, ${input.slug}, ${input.title}, ${input.summary}, ${input.description}, ${input.location},
         ${input.startAt}, ${input.endAt}, ${input.registrationOpenAt}, ${input.registrationCloseAt}, ${input.status},
-        ${input.capacityMode}, ${input.capacity}, ${input.tamuEmailOnly}, ${input.sortOrder}, ${input.accentColor},
+        ${input.capacityMode}, ${input.capacity}, ${input.tamuEmailOnly}, ${Boolean(input.uinRequired)}, ${input.sortOrder}, ${input.accentColor},
         ${tx.json(input.formFields as never)}, ${input.confirmationSubject}, ${input.confirmationBody},
         ${Boolean(input.showDateInConfirmation)}, now())
       on conflict (id) do update set slug = excluded.slug, title = excluded.title, summary = excluded.summary,
         description = excluded.description, location = excluded.location, start_at = excluded.start_at,
         end_at = excluded.end_at, registration_open_at = excluded.registration_open_at,
         registration_close_at = excluded.registration_close_at, status = excluded.status,
-        capacity_mode = excluded.capacity_mode, capacity = excluded.capacity, tamu_email_only = excluded.tamu_email_only, sort_order = excluded.sort_order,
+        capacity_mode = excluded.capacity_mode, capacity = excluded.capacity, tamu_email_only = excluded.tamu_email_only, uin_required = excluded.uin_required, sort_order = excluded.sort_order,
         accent_color = excluded.accent_color, form_fields = excluded.form_fields,
         confirmation_subject = excluded.confirmation_subject, confirmation_body = excluded.confirmation_body,
         show_date_in_confirmation = excluded.show_date_in_confirmation,
@@ -275,6 +277,9 @@ export async function createRegistration(eventId: string, input: RegistrationInp
   if (event.tamuEmailOnly && !input.email.trim().toLowerCase().endsWith("@tamu.edu")) {
     throw new Error("This event is only open to @tamu.edu email addresses.");
   }
+  const uin = input.uin?.trim() ?? "";
+  if (uin && !/^\d{9}$/.test(uin)) throw new Error("Enter your 9-digit UIN.");
+  if (event.uinRequired && !uin) throw new Error("UIN is required.");
   const slot = input.slotId ? event.slots.find((item) => item.id === input.slotId) : null;
   if (event.slots.length && !slot) throw new Error("Select a time slot.");
   for (const field of event.formFields.filter(isQuestion)) {

@@ -50,6 +50,7 @@ export type RegistrationEvent = {
   capacityMode: "event" | "slot" | "unlimited";
   capacity: number | null;
   tamuEmailOnly: boolean;
+  uinRequired?: boolean;
   sortOrder: number;
   accentColor: string;
   formFields: FormField[];

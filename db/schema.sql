@@ -28,6 +28,7 @@ create table if not exists sec_registration.events (
   capacity_mode text not null default 'unlimited' check (capacity_mode in ('event', 'slot', 'unlimited')),
   capacity integer check (capacity is null or capacity > 0),
   tamu_email_only boolean not null default false,
+  uin_required boolean not null default false,
   sort_order integer not null default 0,
   accent_color text not null default '#500000',
   form_fields jsonb not null default '[]'::jsonb,
@@ -45,6 +46,9 @@ alter table sec_registration.events
 
 alter table sec_registration.events
   add column if not exists show_date_in_confirmation boolean not null default true;
+
+alter table sec_registration.events
+  add column if not exists uin_required boolean not null default false;
 
 create table if not exists sec_registration.event_slots (
   id uuid primary key default gen_random_uuid(),
