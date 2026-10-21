@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "@/lib/db";
 import { demoEvents, demoRegistrations } from "@/lib/demo-data";
-import { isQuestion, slugify } from "@/lib/utils";
+import { isQuestion, registrationWindowProblem, slugify } from "@/lib/utils";
 import type { EventInput, EventSlot, FormField, Registration, RegistrationEvent } from "@/types";
 
 type DemoState = { events: RegistrationEvent[]; registrations: Registration[] };
@@ -209,9 +209,22 @@ async function uniqueSlug(slug: string, eventId: string) {
   for (let n = 2; ; n++) if (!taken.has(`${slug}-${n}`)) return `${slug}-${n}`;
 }
 
+// A unique-slug race: another save claimed this URL between uniqueSlug() and the insert.
+const isSlugConflict = (error: unknown) =>
+  typeof error === "object" && error !== null && (error as { code?: string }).code === "23505" &&
+  String((error as { constraint_name?: string }).constraint_name ?? "").includes("slug");
+
 export async function saveEvent(rawInput: EventInput, id?: string) {
   const eventId = id || randomUUID();
   const cleaned = cleanInput(rawInput);
+  // Publishing checks the registration window, but only when it's new or has changed,
+  // so editing an event whose registration already closed never gets stuck on it.
+  if (cleaned.status === "published") {
+    const current = id ? await getEvent(id, true) : null;
+    const changed = !current || current.status !== "published" || current.registrationCloseAt !== cleaned.registrationCloseAt || current.endAt !== cleaned.endAt;
+    const problem = changed && registrationWindowProblem(cleaned);
+    if (problem) throw new Error(problem);
+  }
   const input = { ...cleaned, slug: await uniqueSlug(cleaned.slug, eventId) };
   const timestamp = new Date().toISOString();
   if (!sql) {
@@ -235,6 +248,20 @@ export async function saveEvent(rawInput: EventInput, id?: string) {
     return next;
   }
 
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await writeEvent(eventId, input);
+      break;
+    } catch (error) {
+      if (attempt >= 3 || !isSlugConflict(error)) throw error;
+      input.slug = await uniqueSlug(cleaned.slug, eventId);
+    }
+  }
+  return (await getEvent(eventId, true))!;
+}
+
+async function writeEvent(eventId: string, input: EventInput) {
+  if (!sql) return;
   await sql.begin(async (tx) => {
     await tx`
       insert into sec_registration.events (id, slug, title, summary, description, location, start_at, end_at,
@@ -271,7 +298,6 @@ export async function saveEvent(rawInput: EventInput, id?: string) {
       `;
     }
   });
-  return (await getEvent(eventId, true))!;
 }
 
 export async function archiveEvent(id: string) {
@@ -348,12 +374,14 @@ function cleanAnswers(fields: FormField[], raw: unknown) {
   const answers: Record<string, Answer> = {};
   for (const field of fields.filter(isQuestion)) {
     const value = source[field.id];
+    // Compare trimmed, since older events may have saved options with stray spaces.
+    const options = (field.options ?? []).map((option) => String(option).trim());
     let answer: Answer | undefined;
     if (field.type === "checkbox") answer = value === true;
-    else if (field.type === "multiselect") answer = Array.isArray(value) ? value.map(String).filter((item) => field.options?.includes(item)) : [];
+    else if (field.type === "multiselect") answer = Array.isArray(value) ? value.map((item) => String(item).trim()).filter((item) => options.includes(item)) : [];
     else if (typeof value === "string" && value.trim()) {
       answer = value.trim().slice(0, field.type === "long_text" ? 5000 : 500);
-      if ((field.type === "select" || field.type === "radio") && !field.options?.includes(answer)) throw new Error(`Choose one of the options for ${field.label}.`);
+      if ((field.type === "select" || field.type === "radio") && !options.includes(answer)) throw new Error(`Choose one of the options for ${field.label}.`);
     }
     const empty = answer === undefined || answer === false || (Array.isArray(answer) && !answer.length);
     if (field.required && empty) throw new Error(`${field.label} is required.`);
