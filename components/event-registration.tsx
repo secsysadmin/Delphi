@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CalendarDays, Check, Clock3, MapPin, Users } from "lucide-react";
-import { eventPhase, formatDate, formatTime } from "@/lib/utils";
+import { eventPhase, formatDate, formatRange, formatTime } from "@/lib/utils";
 import { RichText } from "@/components/rich-text";
 import { validateFields } from "@/lib/form-validation";
 import type { FormField, RegistrationEvent } from "@/types";
@@ -40,10 +40,11 @@ export function EventRegistration({ slug }: { slug: string }) {
   const [answers, setAnswers] = useState<Record<string, string | string[] | boolean>>({});
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
-  const [complete, setComplete] = useState(false);
+  const [complete, setComplete] = useState<{ email: string; emailStatus: string } | null>(null);
 
   useEffect(() => {
     fetch(`/api/events/${encodeURIComponent(slug)}`).then(async (response) => {
+      if (response.status === 404) return;
       const data = await readApiJson<{ event?: RegistrationEvent; error?: string }>(response);
       if (!response.ok) throw new Error(data.error);
       if (!data.event) throw new Error("Event details were unavailable. Please try again.");
@@ -74,21 +75,21 @@ export function EventRegistration({ slug }: { slug: string }) {
       setSending(false);
       return setError("Could not reach the registration service. Check your connection and try again.");
     }
-    let data: { error?: string };
+    let data: { error?: string; emailStatus?: string; registration?: { email: string } };
     try {
-      data = await readApiJson<{ error?: string }>(response);
+      data = await readApiJson<typeof data>(response);
     } catch (reason) {
       setSending(false);
       return setError(reason instanceof Error ? reason.message : "Registration failed. Please try again.");
     }
     setSending(false);
     if (!response.ok) return setError(data.error || "Registration failed.");
-    setComplete(true);
+    setComplete({ email: data.registration?.email ?? String(form.get("email") ?? ""), emailStatus: data.emailStatus ?? "previewed" });
     window.scrollTo({ top: 0 });
   }
 
   if (loading) return <div className="shell page-loading">Loading event…</div>;
-  if (!event) return <div className="shell empty-state page-space"><h2>Event not found</h2><p>{error || "This event may no longer be available."}</p><Link href="/" className="button button--primary">Back to events</Link></div>;
+  if (!event) return <div className="shell empty-state page-space"><h2>Event not found</h2><p>{error || "This event may have been removed, or the link may be incorrect."}</p><Link href="/" className="button button--primary">Back to events</Link></div>;
   const phase = eventPhase(event);
   const full = event.capacityMode === "event" ? event.remaining === 0 : event.capacityMode === "slot" && event.slots.length > 0 && event.slots.every((slot) => slot.remaining === 0);
   const canRegister = phase === "open" && !full;
@@ -97,8 +98,8 @@ export function EventRegistration({ slug }: { slug: string }) {
     <section className="shell confirmation-page">
       <div className="confirmation-card" style={{ "--event-accent": selectedSlot?.accentColor || event.accentColor } as React.CSSProperties}>
         <div className="confirmation-icon"><Check /></div><span className="eyebrow">You&apos;re registered</span><h1>We&apos;ll see you there.</h1>
-        <p>A confirmation has been prepared for your email address. Keep it handy when you arrive.</p>
-        <div className="confirmation-ticket"><strong>{event.title}</strong>{selectedSlot && <span>{selectedSlot.label}</span>}<span>{formatDate(selectedSlot?.startAt || event.startAt, true)}</span><span>{selectedSlot?.location || event.location}</span></div>
+        <p>{complete.emailStatus === "sent" ? <>We emailed a confirmation to <strong>{complete.email}</strong>. Keep it handy when you arrive.</> : complete.emailStatus === "failed" ? <>You&apos;re registered, but we couldn&apos;t send the confirmation email to <strong>{complete.email}</strong>. Take a screenshot of this page to show at the door.</> : <>You&apos;re registered as <strong>{complete.email}</strong>. Confirmation emails are turned off on this preview server.</>}</p>
+        <div className="confirmation-ticket"><strong>{event.title}</strong>{selectedSlot && <span>{selectedSlot.label}</span>}<span>{formatRange(selectedSlot?.startAt || event.startAt, selectedSlot?.endAt || event.endAt)}</span><span>{selectedSlot?.location || event.location}</span></div>
         <Link href="/" className="text-link"><ArrowLeft size={17} /> Back to all events</Link>
       </div>
     </section>
@@ -111,20 +112,20 @@ export function EventRegistration({ slug }: { slug: string }) {
       </section>
       <div className="shell event-detail-layout">
         <aside className="event-facts">
-          <div><CalendarDays /><span><small>Date</small>{formatDate(event.startAt, true)}</span></div>
+          <div><CalendarDays /><span><small>Date</small>{formatRange(event.startAt, event.endAt)}</span></div>
           <div><MapPin /><span><small>Location</small>{event.location}</span></div>
           <div><Users /><span><small>Availability</small>{event.remaining === null ? event.capacityMode === "slot" ? "Varies by session" : "No capacity limit" : `${event.remaining} spot${event.remaining === 1 ? "" : "s"} remaining`}</span></div>
           <div className="event-window"><small>Registration window</small><span>{formatDate(event.registrationOpenAt, true)}</span><span>through {formatDate(event.registrationCloseAt, true)}</span></div>
         </aside>
         <div className="registration-column">
-          <section className="detail-description"><h2>About this event</h2><p>{event.description}</p></section>
+          <section className="detail-description"><h2>About this event</h2><RichText text={event.description} /></section>
           {!canRegister ? <div className="notice-card"><Clock3 /><div><h3>{phase === "open" && full ? "This event is full" : phase === "upcoming" ? "Registration opens soon" : "Registration is closed"}</h3><p>{phase === "open" && full ? "Every spot has been claimed. Check back in case a spot opens up." : phase === "upcoming" ? `Come back ${formatDate(event.registrationOpenAt, true)}.` : "This event is no longer accepting registrations."}</p></div></div> : (
             <form className="registration-form" onSubmit={submit} noValidate>
               {event.slots.length > 0 && <fieldset><legend><span>01</span> Choose a time</legend><p className="fieldset-intro">Select one available session.</p><div className="slot-grid" data-field data-required-message="Choose a time slot">{event.slots.map((slot) => {
                 const full = slot.remaining === 0;
-                return <label key={slot.id} className={`slot-card ${slotId === slot.id ? "slot-card--selected" : ""} ${full ? "slot-card--full" : ""}`}><input type="radio" name="slot" value={slot.id} checked={slotId === slot.id} onChange={() => setSlotId(slot.id)} required disabled={full} /><span className="slot-card__check"><Check /></span><strong>{slot.label}</strong><span>{formatDate(slot.startAt)} · {formatTime(slot.startAt)}–{formatTime(slot.endAt)}</span><span><MapPin size={15} /> {slot.location}</span><small>{full ? "Full" : slot.remaining === null ? "Available" : `${slot.remaining} spots left`}</small></label>;
+                return <label key={slot.id} className={`slot-card ${slotId === slot.id ? "slot-card--selected" : ""} ${full ? "slot-card--full" : ""}`}><input type="radio" name="slot" value={slot.id} checked={slotId === slot.id} onChange={() => setSlotId(slot.id)} required disabled={full} /><span className="slot-card__check"><Check /></span><strong>{slot.label}</strong><span>{formatDate(slot.startAt)} · {formatTime(slot.startAt)}–{formatTime(slot.endAt)}</span><span><MapPin size={15} /> {slot.location}</span><small>{full ? "Full" : slot.remaining === null ? "Available" : `${slot.remaining} spot${slot.remaining === 1 ? "" : "s"} left`}</small></label>;
               })}</div></fieldset>}
-              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label>First name <em>*</em><input name="firstName" autoComplete="given-name" required /></label><label>Last name <em>*</em><input name="lastName" autoComplete="family-name" required /></label><label>Email address <em>*</em><input name="email" type="email" autoComplete="email" required placeholder="name@tamu.edu" pattern={event.tamuEmailOnly ? ".+@tamu\\.edu" : undefined} title={event.tamuEmailOnly ? "Use your @tamu.edu email address" : undefined} />{event.tamuEmailOnly && <small>This event requires an @tamu.edu email address.</small>}</label><label>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}<input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} /></label></div></fieldset>
+              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label><span>First name <em>*</em></span><input name="firstName" autoComplete="given-name" required /></label><label><span>Last name <em>*</em></span><input name="lastName" autoComplete="family-name" required /></label><label><span>Email address <em>*</em></span><input name="email" type="email" autoComplete="email" required placeholder="name@tamu.edu" pattern={event.tamuEmailOnly ? ".+@[Tt][Aa][Mm][Uu]\\.[Ee][Dd][Uu]" : undefined} title={event.tamuEmailOnly ? "Use your @tamu.edu email address" : undefined} />{event.tamuEmailOnly && <small>This event requires an @tamu.edu email address.</small>}</label><label><span>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}</span><input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} /></label></div></fieldset>
               {event.formFields.length > 0 && <fieldset><legend><span>{event.slots.length ? "03" : "02"}</span> Event questions</legend><div className="form-stack">{event.formFields.map((field) => field.type === "section" ? <div key={field.id} className="form-section-block">{field.label && <h3>{field.label}</h3>}{field.helpText && <RichText text={field.helpText} />}</div> : <label key={field.id} className="custom-field" data-field htmlFor={`field-${field.id}`}><span>{field.label} {field.required && <em>*</em>}</span>{field.helpText && <small id={`field-${field.id}-help`}>{field.helpText}</small>}<Field field={field} value={answers[field.id]} onChange={(value) => setAnswers((current) => ({ ...current, [field.id]: value }))} /></label>)}</div></fieldset>}
               {error && <div className="form-error" role="alert">{error}</div>}
               <button className="button button--primary button--large" disabled={sending}>{sending ? "Registering…" : "Complete registration"} <ArrowRightIcon /></button><p className="form-fine-print">You&apos;ll receive a confirmation with your date, time, and room details.</p>

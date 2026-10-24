@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicError } from "@/lib/errors";
 import { createAdminUser, listAdminUsers } from "@/lib/admin-users";
 import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 
@@ -16,6 +17,6 @@ export async function POST(request: Request) {
     const user = await createAdminUser(email);
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to add administrator." }, { status: 400 });
+    return NextResponse.json({ error: publicError(error, "Unable to add administrator.") }, { status: 400 });
   }
 }

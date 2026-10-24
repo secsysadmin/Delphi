@@ -5,6 +5,9 @@ const watched = new WeakSet<HTMLElement>();
 const containerOf = (control: Element) => control.closest<HTMLElement>("[data-field]") ?? control.closest<HTMLElement>("label");
 
 function messageFor(control: Control) {
+  if (control.validity.customError) return control.validationMessage;
+  if ((control.validity.patternMismatch || control.validity.typeMismatch) && control.title) return control.title;
+  if (control.validity.typeMismatch && control.type === "email") return "Enter a valid email address";
   if (!control.validity.valueMissing) return control.validationMessage;
   return control.closest<HTMLElement>("[data-required-message]")?.dataset.requiredMessage ?? "This field is required";
 }

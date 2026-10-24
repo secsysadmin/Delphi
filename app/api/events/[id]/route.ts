@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicError } from "@/lib/errors";
 import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { archiveEvent, getEvent, saveEvent } from "@/lib/store";
 import type { EventInput } from "@/types";
@@ -26,7 +27,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const event = await saveEvent((await request.json()) as EventInput, id);
     return NextResponse.json({ event });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update event." }, { status: 400 });
+    return NextResponse.json({ error: publicError(error, "Could not update event.") }, { status: 400 });
   }
 }
 
@@ -38,6 +39,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     await archiveEvent(id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not archive event." }, { status: 400 });
+    return NextResponse.json({ error: publicError(error, "Could not archive event.") }, { status: 400 });
   }
 }

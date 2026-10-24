@@ -169,6 +169,10 @@ function cleanInput(input: EventInput): EventInput {
     };
   });
   if (status === "published") {
+    const outside = slots.find((slot) => slot.startAt < startAt || slot.endAt > endAt);
+    if (outside) throw new Error(`${outside.label} runs outside the event's start and end time. Change the session or the event times.`);
+    const uncapped = capacityMode === "slot" ? slots.find((slot) => !slot.capacity) : undefined;
+    if (uncapped) throw new Error(`Set a maximum number of registrants for ${uncapped.label}.`);
     const unlabeled = formFields.find((field) => isQuestion(field) && !field.label);
     if (unlabeled) throw new Error("Every registration question needs a question title.");
     const noOptions = formFields.find((field) => CHOICE_TYPES.has(field.type) && !field.options?.length);
@@ -217,10 +221,12 @@ const isSlugConflict = (error: unknown) =>
 export async function saveEvent(rawInput: EventInput, id?: string) {
   const eventId = id || randomUUID();
   const cleaned = cleanInput(rawInput);
+  const current = id ? await getEvent(id, true) : null;
+  const orphaned = current?.slots.find((slot) => slot.registeredCount > 0 && !cleaned.slots.some((item) => item.id === slot.id));
+  if (orphaned) throw new Error(`${orphaned.label} has ${orphaned.registeredCount} registrant${orphaned.registeredCount === 1 ? "" : "s"}, so it can't be deleted. Change its time or room instead, or remove those registrants first.`);
   // Publishing checks the registration window, but only when it's new or has changed,
   // so editing an event whose registration already closed never gets stuck on it.
   if (cleaned.status === "published") {
-    const current = id ? await getEvent(id, true) : null;
     const changed = !current || current.status !== "published" || current.registrationCloseAt !== cleaned.registrationCloseAt || current.endAt !== cleaned.endAt;
     const problem = changed && registrationWindowProblem(cleaned);
     if (problem) throw new Error(problem);
@@ -334,6 +340,29 @@ export async function getRegistrations(eventId: string) {
       created_at as "createdAt" from sec_registration.registrations where event_id = ${eventId} order by created_at desc
   `;
   return rows.map((row) => ({ ...row, createdAt: toIso(row.createdAt) })) as Registration[];
+}
+
+export async function getRegistration(eventId: string, registrationId: string) {
+  return (await getRegistrations(eventId)).find((registration) => registration.id === registrationId) ?? null;
+}
+
+export async function logEmail(eventId: string, recipientCount: number, subject: string, status: string) {
+  if (!sql) return;
+  await sql`insert into sec_registration.email_logs (event_id, recipient_count, subject, status) values (${eventId}, ${recipientCount}, ${subject}, ${status})`;
+}
+
+export function previewEvent(rawInput: EventInput): RegistrationEvent {
+  const input = cleanInput({ ...rawInput, status: "draft" });
+  const timestamp = new Date().toISOString();
+  return {
+    ...input,
+    id: "preview",
+    slots: input.slots.map((slot) => ({ ...slot, registeredCount: 0, remaining: slot.capacity })),
+    registeredCount: 0,
+    remaining: input.capacity,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 export async function deleteRegistration(eventId: string, registrationId: string) {

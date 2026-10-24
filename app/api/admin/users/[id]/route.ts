@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicError } from "@/lib/errors";
 import { currentAdminEmail, isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { deleteAdminUser } from "@/lib/admin-users";
 
@@ -11,6 +12,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     await deleteAdminUser((await params).id, currentEmail);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to delete administrator." }, { status: 400 });
+    return NextResponse.json({ error: publicError(error, "Unable to delete administrator.") }, { status: 400 });
   }
 }

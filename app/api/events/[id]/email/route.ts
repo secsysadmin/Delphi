@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { publicError } from "@/lib/errors";
 import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { sendBroadcast } from "@/lib/email";
-import { getEvent, getRegistrations } from "@/lib/store";
+import { getEvent, getRegistrations, logEmail } from "@/lib/store";
+
+export const maxDuration = 60;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -16,8 +19,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const registrations = all.filter((item) => registrationIds.includes(item.id) && item.status === "confirmed");
     if (!registrations.length) return NextResponse.json({ error: "No confirmed recipients selected." }, { status: 400 });
     const result = await sendBroadcast(registrations, event, subject, body);
+    const status = result.preview ? "previewed" : result.failed ? (result.sent ? "partial" : "failed") : "sent";
+    await logEmail(event.id, registrations.length, subject, status).catch((error) => console.error("Could not log broadcast", error));
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not send email." }, { status: 400 });
+    return NextResponse.json({ error: publicError(error, "Could not send email.") }, { status: 400 });
   }
 }

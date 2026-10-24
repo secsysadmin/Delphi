@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BadgeCheck, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3, LockKeyhole, MapPin, Search, Users } from "lucide-react";
-import { eventPhase, formatDate } from "@/lib/utils";
+import { eventPhase, formatRange } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
 
 const chicagoDateParts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -34,7 +34,7 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("custom");
   const [loadError, setLoadError] = useState(false);
-  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
+  const [chosenMonthOffset, setCalendarMonthOffset] = useState<number | null>(null);
   const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
   const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
   const eventCardRefs = useRef(new Map<string, HTMLElement>());
@@ -58,6 +58,13 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
   }, [events, query, sort]);
 
   const nextEvent = useMemo(() => events.filter((event) => eventPhase(event) !== "past" && event.status === "published").sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [events]);
+  const nextEventMonthOffset = useMemo(() => {
+    if (!nextEvent) return 0;
+    const [year, month] = eventDayKey(nextEvent.startAt).split("-").map(Number);
+    const offset = (year - calendarStart.year) * 12 + (month - calendarStart.month);
+    return offset > 0 && offset <= 11 ? offset : 0;
+  }, [nextEvent, calendarStart.month, calendarStart.year]);
+  const calendarMonthOffset = chosenMonthOffset ?? nextEventMonthOffset;
   const calendarMonth = useMemo(() => new Date(Date.UTC(calendarStart.year, calendarStart.month - 1 + calendarMonthOffset, 1)), [calendarMonthOffset, calendarStart.month, calendarStart.year]);
   const calendarDays = useMemo(() => {
     const year = calendarMonth.getUTCFullYear();
@@ -170,7 +177,7 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
             {nextEvent ? <Link href={`/events/${nextEvent.slug}`}>
               <span>Next on the calendar</span>
               <strong>{nextEvent.title}</strong>
-              <p><CalendarDays size={17} />{formatDate(nextEvent.startAt, true)}</p>
+              <p><CalendarDays size={17} />{formatRange(nextEvent.startAt, nextEvent.endAt)}</p>
               <p><MapPin size={17} />{nextEvent.location}</p>
               <em>View event <ArrowRight size={18} /></em>
             </Link> : <div><span>Next on the calendar</span><strong>{loading ? "Loading upcoming events…" : "New events are being scheduled."}</strong></div>}
@@ -196,7 +203,7 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
                   <div className="event-card__stripe" />
                   <div className="event-card__top"><EventStatus phase={phase} soldOut={soldOut} /><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
                   <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p></div>
-                  <ul><li><CalendarDays size={17} />{formatDate(event.startAt, true)}</li><li><MapPin size={17} />{event.location}</li>{openSlots > 0 && <li><Clock3 size={17} />{openSlots} time slot{openSlots === 1 ? "" : "s"} available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spot{event.remaining === 1 ? "" : "s"} remaining</li>}</ul>
+                  <ul><li><CalendarDays size={17} />{formatRange(event.startAt, event.endAt)}</li><li><MapPin size={17} />{event.location}</li>{openSlots > 0 && <li><Clock3 size={17} />{openSlots} time slot{openSlots === 1 ? "" : "s"} available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spot{event.remaining === 1 ? "" : "s"} remaining</li>}</ul>
                   <span className="event-card__link">View event <ArrowRight size={20} /></span>
                 </Link>
               );
@@ -209,9 +216,9 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
           <div className="calendar-section__head">
             <div><h2 id="calendar-heading">Plan ahead</h2><p>Browse SEC events through the next twelve months.</p></div>
             <div className="calendar-controls">
-              <button type="button" onClick={() => setCalendarMonthOffset((offset) => offset - 1)} disabled={isFirstCalendarMonth} aria-label="Previous month"><ChevronLeft size={19} /></button>
+              <button type="button" onClick={() => setCalendarMonthOffset(calendarMonthOffset - 1)} disabled={isFirstCalendarMonth} aria-label="Previous month"><ChevronLeft size={19} /></button>
               <h3 aria-live="polite">{monthLabel.format(calendarMonth)}</h3>
-              <button type="button" onClick={() => setCalendarMonthOffset((offset) => offset + 1)} disabled={isLastCalendarMonth} aria-label="Next month"><ChevronRight size={19} /></button>
+              <button type="button" onClick={() => setCalendarMonthOffset(calendarMonthOffset + 1)} disabled={isLastCalendarMonth} aria-label="Next month"><ChevronRight size={19} /></button>
             </div>
           </div>
           <div className="calendar-grid" role="grid" aria-label={`${monthLabel.format(calendarMonth)} event calendar`}>
@@ -220,9 +227,9 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
               const dayEvents = day ? calendarEvents[dayKey(day)] ?? [] : [];
               return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${dayLabel.format(day)}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
                 {day && <span className="calendar-grid__date">{day.getUTCDate()}</span>}
-                {dayEvents.length > 0 && <span className="calendar-grid__events">{dayEvents.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatDate(event.startAt, true)}, ${event.location}`}>
+                {dayEvents.length > 0 && <span className="calendar-grid__events">{dayEvents.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatRange(event.startAt, event.endAt)}, ${event.location}`}>
                   <span aria-hidden="true">{event.title}</span>
-                  <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatDate(event.startAt, true)} · {event.location}</small></span>
+                  <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatRange(event.startAt, event.endAt)} · {event.location}</small></span>
                 </Link>)}</span>}
               </div>;
             })}

@@ -21,7 +21,7 @@ export const demoEvents: RegistrationEvent[] = [
     capacityMode: "slot",
     capacity: null,
     tamuEmailOnly: false,
-    sortOrder: 1,
+    sortOrder: 2,
     accentColor: "#7d1735",
     formFields: [
       { id: "classification", label: "Classification", type: "select", required: true, options: ["Freshman", "Sophomore", "Junior", "Senior", "Graduate"] },
@@ -88,7 +88,7 @@ export const demoEvents: RegistrationEvent[] = [
     capacityMode: "event",
     capacity: 180,
     tamuEmailOnly: false,
-    sortOrder: 2,
+    sortOrder: 1,
     accentColor: "#500000",
     formFields: [
       { id: "major", label: "Major", type: "short_text", required: true },
@@ -211,7 +211,7 @@ export const demoEvents: RegistrationEvent[] = [
 export const demoRegistrations: Registration[] = [
   {
     id: "demo-registration-1",
-    eventId: demoEvents[2].id,
+    eventId: "7f317a6a-b7de-4b56-9fb7-00f41e1cb003",
     slotId: null,
     firstName: "Reveille",
     lastName: "Student",

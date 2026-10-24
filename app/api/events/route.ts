@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicError } from "@/lib/errors";
 import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { getEvents, saveEvent } from "@/lib/store";
 import type { EventInput } from "@/types";
@@ -20,6 +21,6 @@ export async function POST(request: Request) {
     const event = await saveEvent((await request.json()) as EventInput);
     return NextResponse.json({ event }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save event." }, { status: 400 });
+    return NextResponse.json({ error: publicError(error, "Could not save event.") }, { status: 400 });
   }
 }
