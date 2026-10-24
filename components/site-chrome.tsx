@@ -47,16 +47,15 @@ export async function SiteHeader() {
             <Link href="/">Events</Link>
             {admin && <Link href="/admin">Dashboard</Link>}
           </div>
-          {admin ? (
-            <form action="/api/auth/logout" method="post"><button className="nav-action" type="submit">Log out</button></form>
-          ) : <Link href="/admin/login" className="nav-action">Admin sign in</Link>}
+          {admin && <form action="/api/auth/logout" method="post"><button className="nav-action" type="submit">Log out</button></form>}
         </div>
       </nav>
     </header>
   );
 }
 
-export function SiteFooter() {
+export async function SiteFooter() {
+  const admin = await isAdmin();
   return (
     <footer className="site-footer">
       <div className="shell footer-grid">
@@ -71,7 +70,7 @@ export function SiteFooter() {
           <div><a href="https://instagram.com/tamusec" aria-label="Instagram"><Camera size={20} /></a><a href="https://linkedin.com/company/texas-a&m-student-engineers'-council" aria-label="LinkedIn"><BriefcaseBusiness size={20} /></a><a href="https://sec.tamu.edu" aria-label="SEC website"><ExternalLink size={20} /></a></div>
         </div>
       </div>
-      <div className="shell footer-bottom"><span>© {new Date().getFullYear()} Student Engineers&apos; Council</span><span>An organization of Texas A&amp;M University</span></div>
+      <div className="shell footer-bottom"><span>© {new Date().getFullYear()} Student Engineers&apos; Council</span><span>An organization of Texas A&amp;M University</span>{!admin && <Link href="/admin/login" className="footer-staff">Staff sign-in</Link>}</div>
     </footer>
   );
 }

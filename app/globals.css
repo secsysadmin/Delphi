@@ -827,3 +827,8 @@ label > span > small { color: var(--muted); font-weight: 500; }
   .email-preview-tools { align-items: stretch; flex-direction: column; }
   .email-preview__picker select { width: 100%; min-width: 0; }
 }
+.footer-staff { color: inherit; font-size: .75rem; opacity: .7; text-decoration: none; transition: opacity .15s; }
+.footer-staff:hover, .footer-staff:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+.calendar-section { overflow-x: clip; }
+.calendar-grid > :nth-child(7n+4) .calendar-event__tooltip { left: 50%; translate: -50% 0; }
+.calendar-grid > :is(:nth-child(7n+5), :nth-child(7n+6), :nth-child(7n)) .calendar-event__tooltip { left: auto; right: 0; }
