@@ -734,6 +734,11 @@ html::selection, ::selection { color: #fff; background: var(--maroon); }
 .help-callout { border-color: #d6a64c; background: #fff8e8; }
 .editor-section__head, .builder-card, .editor-nav { background: #f8f8f8; }
 
+@media (max-width: 1000px) {
+  .directory-desk__inner { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .directory-desk__workspace { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 650px) {
   .brand-bar__inner { min-height: 86px; }
   .sec-wordmark { width: 128px; gap: 3px; }
@@ -757,11 +762,13 @@ html::selection, ::selection { color: #fff; background: var(--maroon); }
 }
 
 /* Some mobile webviews report a desktop layout width despite a device-width
-   viewport. Keep the directory usable when that happens. */
-@media (hover: none) and (pointer: coarse) {
+   viewport. Keep the directory usable when that happens, but only up to tablet
+   width so touchscreen laptops and wide tablets keep the desktop layout. */
+@media (hover: none) and (pointer: coarse) and (max-width: 900px) {
   .event-card { min-height: 0; display: block; padding: 26px 0 0; }
-  .event-card__top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0; padding: 0 0 18px; border: 0; }
-  .event-card__date { text-align: right; font-size: 2.75rem; }
+  .event-card__top { position: static; align-self: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0; padding: 0 0 18px; border: 0; }
+  .event-card__top .status-pill { position: static; inset: auto; }
+  .event-card__date { display: block; height: auto; padding-bottom: 0; text-align: right; font-size: 2.75rem; }
   .event-card__body { min-height: 0; padding: 0 0 22px; }
   .event-card h3 { font-size: clamp(2rem, 8vw, 2.7rem); }
   .event-card ul { padding: 0 0 16px; border: 0; }
@@ -769,7 +776,7 @@ html::selection, ::selection { color: #fff; background: var(--maroon); }
 }
 
 /* The compact mobile rail keeps availability and date as one deliberate row. */
-@media (max-width: 650px), (hover: none) and (pointer: coarse) {
+@media (max-width: 650px), (hover: none) and (pointer: coarse) and (max-width: 900px) {
   .event-card__top { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; padding-bottom: 20px; }
   .event-card__top .status-pill { width: fit-content; max-width: 100%; justify-self: start; gap: 5px; padding: 4px 6px; font-size: .625rem; letter-spacing: .05em; line-height: 1.1; white-space: nowrap; }
   .event-card__date { font-size: 3rem; line-height: .8; }
