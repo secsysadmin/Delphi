@@ -14,6 +14,7 @@ type EventDirectoryProps = { calendarStart: CalendarStart };
 type EventStatusProps = { phase: Phase; soldOut: boolean };
 type EventCardProps = { event: RegistrationEvent; revealed: boolean; revealDuration: number; cardRef: (node: HTMLElement | null) => void };
 type CalendarDayProps = { day: Date | null; events: RegistrationEvent[] };
+type MonthAgendaProps = { events: RegistrationEvent[]; monthName: string };
 
 const CALENDAR_ID = "event-calendar";
 const CALENDAR_MONTHS = 12;
@@ -185,6 +186,13 @@ function CalendarDay({ day, events }: CalendarDayProps) {
   </div>;
 }
 
+function MonthAgenda({ events, monthName }: MonthAgendaProps) {
+  if (!events.length) return <p className="calendar-agenda calendar-agenda--empty">No events in {monthName}.</p>;
+  return <ul className="calendar-agenda" aria-label={`Events in ${monthName}`}>
+    {events.map((event) => <li key={event.id}><Link href={`/events/${event.slug}`}><strong>{event.title}</strong><span>{formatRange(event.startAt, event.endAt)}</span><span>{event.location}</span></Link></li>)}
+  </ul>;
+}
+
 function scrollToCalendar(clickEvent: React.MouseEvent<HTMLAnchorElement>) {
   clickEvent.preventDefault();
   const calendar = document.getElementById(CALENDAR_ID);
@@ -232,6 +240,10 @@ export function EventDirectory({ calendarStart }: EventDirectoryProps) {
   const calendarMonthOffset = chosenMonthOffset ?? nextEventMonthOffset;
   const calendarMonth = useMemo(() => new Date(Date.UTC(calendarStart.year, calendarStart.month - 1 + calendarMonthOffset, 1)), [calendarMonthOffset, calendarStart.month, calendarStart.year]);
   const calendarDays = useMemo(() => monthDays(calendarMonth), [calendarMonth]);
+  const monthEvents = useMemo(() => {
+    const monthPrefix = dayKey(calendarMonth).slice(0, 7);
+    return upcoming.filter((event) => eventDayKey(event.startAt).startsWith(monthPrefix)).sort((a, b) => a.startAt.localeCompare(b.startAt));
+  }, [upcoming, calendarMonth]);
   const eventsByDay = useMemo(() => upcoming.reduce<Record<string, RegistrationEvent[]>>((byDay, event) => {
     (byDay[eventDayKey(event.startAt)] ??= []).push(event);
     return byDay;
@@ -284,6 +296,7 @@ export function EventDirectory({ calendarStart }: EventDirectoryProps) {
             {WEEKDAYS.map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
             {calendarDays.map((day, index) => <CalendarDay key={day ? dayKey(day) : `blank-${index}`} day={day} events={day ? eventsByDay[dayKey(day)] ?? [] : []} />)}
           </div>
+          <MonthAgenda events={monthEvents} monthName={monthLabel.format(calendarMonth)} />
           <p className="calendar-note">Select an event marker to view details and register.</p>
         </div>
       </section>
