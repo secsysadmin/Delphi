@@ -241,8 +241,12 @@ export function EventDirectory({ calendarStart }: EventDirectoryProps) {
   const calendarMonth = useMemo(() => new Date(Date.UTC(calendarStart.year, calendarStart.month - 1 + calendarMonthOffset, 1)), [calendarMonthOffset, calendarStart.month, calendarStart.year]);
   const calendarDays = useMemo(() => monthDays(calendarMonth), [calendarMonth]);
   const monthEvents = useMemo(() => {
-    const monthPrefix = dayKey(calendarMonth).slice(0, 7);
-    return upcoming.filter((event) => eventDayKey(event.startAt).startsWith(monthPrefix)).sort((a, b) => a.startAt.localeCompare(b.startAt));
+    const year = calendarMonth.getUTCFullYear();
+    const month = calendarMonth.getUTCMonth() + 1;
+    return upcoming.filter((event) => {
+      const start = centralWall(new Date(event.startAt));
+      return start.year === year && start.month === month;
+    }).sort((a, b) => a.startAt.localeCompare(b.startAt));
   }, [upcoming, calendarMonth]);
   const eventsByDay = useMemo(() => upcoming.reduce<Record<string, RegistrationEvent[]>>((byDay, event) => {
     (byDay[eventDayKey(event.startAt)] ??= []).push(event);
@@ -296,7 +300,7 @@ export function EventDirectory({ calendarStart }: EventDirectoryProps) {
             {WEEKDAYS.map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
             {calendarDays.map((day, index) => <CalendarDay key={day ? dayKey(day) : `blank-${index}`} day={day} events={day ? eventsByDay[dayKey(day)] ?? [] : []} />)}
           </div>
-          <MonthAgenda events={monthEvents} monthName={monthLabel.format(calendarMonth)} />
+          {!loading && !loadError && <MonthAgenda events={monthEvents} monthName={monthLabel.format(calendarMonth)} />}
           <p className="calendar-note">Select an event marker to view details and register.</p>
         </div>
       </section>
