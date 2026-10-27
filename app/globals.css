@@ -539,7 +539,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 /* Registration operations: supporting data must remain legible at a glance. */
 .registrations-page .registrations-head p, .registrations-page .metric-card small, .registrations-page .registration-table th, .registrations-page .registration-table small { color: #514941; }
 .registrations-page > .back-link { color: var(--maroon); }
-.button--selection:disabled { border-color: #998b7c; color: #514941; background: transparent; opacity: 1; cursor: not-allowed; }
+.button--selection:disabled { border-color: var(--line); color: #8a8580; background: transparent; opacity: 1; cursor: not-allowed; }
 .registration-table__actions { width: 1%; text-align: right; }
 .registration-delete { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid #9c4a45; color: #7b211d; background: transparent; }
 .registration-delete:hover { border-color: #7b211d; color: #fff8ef; background: #7b211d; }
@@ -821,7 +821,7 @@ label > span > small { color: var(--muted); font-weight: 500; }
 .email-status--failed { color: var(--danger); }
 .email-status--previewed, .email-status--pending { color: var(--muted); }
 .registration-table__actions > button + button { margin-left: 6px; }
-.registration-table tr > :last-child { position: sticky; right: 0; background: #fff; box-shadow: -1px 0 0 var(--line); }
+.registration-table tr > :last-child { position: sticky; right: 0; background: #fff; box-shadow: -1px 0 0 var(--line), -10px 0 12px -10px rgba(0,0,0,.25); }
 .registration-table thead tr > :last-child { background: #f8f6f3; }
 .registration-resend { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); color: var(--maroon); background: transparent; }
 .registration-resend:hover { border-color: var(--maroon); }
