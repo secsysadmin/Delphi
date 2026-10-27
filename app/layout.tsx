@@ -3,6 +3,9 @@ import { Source_Serif_4, Work_Sans } from "next/font/google";
 import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { ScrollRestorationGuard } from "@/components/scroll-restoration-guard";
+import { DEFAULT_ACCENT_COLOR } from "@/lib/utils";
+
+type RootLayoutProps = Readonly<{ children: React.ReactNode }>;
 
 const sans = Work_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const serif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif", display: "swap" });
@@ -17,15 +20,13 @@ export const metadata: Metadata = {
   },
 };
 
-// Be explicit about the mobile viewport so responsive breakpoints retain their
-// intended CSS width in embedded and mobile browsers.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#500000",
+  themeColor: DEFAULT_ACCENT_COLOR,
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <body className={`${sans.variable} ${serif.variable}`}>

@@ -1,14 +1,17 @@
 import { LockKeyhole } from "lucide-react";
 
-const errorMessages: Record<string, string> = {
+const ERROR_MESSAGES: Record<string, string> = {
   not_configured: "Google sign-in isn't configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
   state: "Your sign-in session expired. Please try again.",
   unverified: "Your Google account's email isn't verified, so we can't sign you in.",
   google: "Something went wrong talking to Google. Please try again.",
 };
+const FALLBACK_ERROR = "Something went wrong. Please try again.";
 
-export function AdminLogin({ error }: { error?: string }) {
-  const message = error ? errorMessages[error] ?? "Something went wrong. Please try again." : null;
+type AdminLoginProps = { error?: string };
+
+export function AdminLogin({ error }: AdminLoginProps) {
+  const message = error ? ERROR_MESSAGES[error] ?? FALLBACK_ERROR : null;
   return (
     <section className="login-page">
       <div className="login-card">

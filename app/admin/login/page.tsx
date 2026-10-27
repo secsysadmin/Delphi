@@ -5,7 +5,9 @@ import { AdminLogin } from "@/components/admin-login";
 
 export const metadata: Metadata = { title: "Admin sign in" };
 
-export default async function AdminLoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+type AdminLoginPageProps = { searchParams: Promise<{ error?: string }> };
+
+export default async function AdminLoginPage({ searchParams }: AdminLoginPageProps) {
   if (await isAdmin()) redirect("/admin");
   const { error } = await searchParams;
   return <AdminLogin error={error} />;
