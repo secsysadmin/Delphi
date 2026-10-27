@@ -832,11 +832,17 @@ label > span > small { color: var(--muted); font-weight: 500; }
 .builder-card > :not(.builder-card__head) + * { margin-top: 20px; }
 .builder-card > label { display: flex; flex-direction: column; gap: 7px; color: #393532; font-size: .8125rem; font-weight: 750; }
 
+@media (pointer: coarse) {
+  input:is([type="checkbox"], [type="radio"]):not(.slot-card input) { width: 20px; height: 20px; }
+}
+
 @media (max-width: 650px), (hover: none) and (pointer: coarse) and (max-width: 900px) {
   .event-card__link { width: auto; }
 }
 
 @media (max-width: 650px) {
+  .nav-links a, .nav-action { display: inline-flex; align-items: center; min-height: 44px; }
+  .tabs button { min-height: 44px; }
   .metric-grid--three > :last-child:nth-child(odd) { grid-column: 1 / -1; }
   .form-grid { grid-template-columns: minmax(0, 1fr); }
   .editor-actions { align-items: stretch; width: 100%; }
