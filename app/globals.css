@@ -850,6 +850,8 @@ label > span > small { color: var(--muted); font-weight: 500; }
   .email-preview-tools { align-items: stretch; flex-direction: column; }
   .email-preview__picker select { width: 100%; min-width: 0; }
 }
+.select-label select:focus { border-color: var(--maroon); }
+.search-box input, .search-box input:focus { height: 100%; border: 0; padding: 0; box-shadow: none; background: transparent; }
 .calendar-agenda { display: none; }
 
 @media (max-width: 650px) {
