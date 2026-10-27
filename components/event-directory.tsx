@@ -3,125 +3,103 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BadgeCheck, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3, LockKeyhole, MapPin, Search, Users } from "lucide-react";
-import { eventPhase, formatRange } from "@/lib/utils";
+import { getJson } from "@/lib/api-client";
+import { EVENT_TIME_ZONE, centralWall, dateKey, eventPhase, formatRange, isSoldOut, plural } from "@/lib/utils";
 import type { RegistrationEvent } from "@/types";
 
-const chicagoDateParts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" });
-// Calendar dates are calendar values, not instants. Keep their arithmetic and
-// formatting in UTC so the server and browser produce identical initial HTML.
+type Sort = "custom" | "date" | "alphabetical";
+type Phase = ReturnType<typeof eventPhase>;
+type CalendarStart = { year: number; month: number };
+type EventDirectoryProps = { calendarStart: CalendarStart };
+type EventStatusProps = { phase: Phase; soldOut: boolean };
+type EventCardProps = { event: RegistrationEvent; revealed: boolean; revealDuration: number; cardRef: (node: HTMLElement | null) => void };
+type CalendarDayProps = { day: Date | null; events: RegistrationEvent[] };
+
+const CALENDAR_ID = "event-calendar";
+const CALENDAR_MONTHS = 12;
+const MONTHS_PER_YEAR = 12;
+const CALENDAR_SCROLL_OFFSET_PX = 32;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SORTS: Array<{ value: Sort; label: string }> = [
+  { value: "custom", label: "Featured" },
+  { value: "date", label: "Soonest" },
+  { value: "alphabetical", label: "A–Z" },
+];
+const REVEAL_DURATION_MS = 480;
+const MIN_REVEAL_DURATION_MS = 220;
+const REVEAL_SPEEDUP_PER_VELOCITY_MS = 90;
+const REVEAL_STAGGER_MS = 84;
+const MIN_REVEAL_STAGGER_MS = 18;
+const STAGGER_SPEEDUP_PER_VELOCITY_MS = 18;
+const MAX_SCROLL_VELOCITY = 3;
+const MIN_FRAME_MS = 16;
+const REVEAL_OBSERVER_OPTIONS: IntersectionObserverInit = { threshold: 0.15, rootMargin: "0px 0px -8% 0px" };
+
 const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 const dayLabel = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+const cardMonth = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: EVENT_TIME_ZONE });
+const cardDay = new Intl.DateTimeFormat("en-US", { day: "2-digit", timeZone: EVENT_TIME_ZONE });
 
 function dayKey(date: Date) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  return dateKey(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
 function eventDayKey(date: string) {
-  const parts = Object.fromEntries(chicagoDateParts.formatToParts(new Date(date)).filter(({ type }) => type !== "literal").map(({ type, value }) => [type, value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
+  const { year, month, day } = centralWall(new Date(date));
+  return dateKey(year, month, day);
 }
 
-function EventStatus({ phase, soldOut }: { phase: ReturnType<typeof eventPhase>; soldOut: boolean }) {
-  if (soldOut) return <span className="status-pill status-pill--closed"><LockKeyhole aria-hidden="true" size={14} /><span>Event full</span></span>;
-  if (phase === "open") return <span className="status-pill status-pill--open"><BadgeCheck aria-hidden="true" size={14} /><span>Registration open</span></span>;
-  if (phase === "upcoming") return <span className="status-pill status-pill--upcoming"><CalendarClock aria-hidden="true" size={14} /><span>Opens soon</span></span>;
-  return <span className="status-pill status-pill--closed"><LockKeyhole aria-hidden="true" size={14} /><span>Registration closed</span></span>;
+function isUpcoming(event: RegistrationEvent) {
+  return event.status === "published" && eventPhase(event) !== "past";
 }
 
-export function EventDirectory({ calendarStart }: { calendarStart: { year: number; month: number } }) {
-  const [events, setEvents] = useState<RegistrationEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState("custom");
-  const [loadError, setLoadError] = useState(false);
-  const [chosenMonthOffset, setCalendarMonthOffset] = useState<number | null>(null);
-  const [revealedEventIds, setRevealedEventIds] = useState<Set<string>>(() => new Set());
-  const [revealDurations, setRevealDurations] = useState<Record<string, number>>({});
-  const eventCardRefs = useRef(new Map<string, HTMLElement>());
-  const revealedEventIdsRef = useRef(new Set<string>());
-  const nextRevealAtRef = useRef(0);
+function monthDays(month: Date) {
+  const year = month.getUTCFullYear();
+  const index = month.getUTCMonth();
+  const leadingBlanks = new Date(Date.UTC(year, index, 1)).getUTCDay();
+  const dayCount = new Date(Date.UTC(year, index + 1, 0)).getUTCDate();
+  return [...Array<Date | null>(leadingBlanks).fill(null), ...Array.from({ length: dayCount }, (_, day) => new Date(Date.UTC(year, index, day + 1)))];
+}
 
-  useEffect(() => {
-    fetch("/api/events").then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setEvents(data.events ?? []);
-    }).catch(() => setLoadError(true)).finally(() => setLoading(false));
-  }, []);
+function afterNextPaint(callback: () => void) {
+  let frame = requestAnimationFrame(() => {
+    frame = requestAnimationFrame(callback);
+  });
+  return () => cancelAnimationFrame(frame);
+}
 
-  const visible = useMemo(() => {
-    const normalized = query.toLowerCase().trim();
-    const next = events.filter((event) => eventPhase(event) !== "past" && event.status === "published" && (!normalized || `${event.title} ${event.summary} ${event.location}`.toLowerCase().includes(normalized)));
-    if (sort === "alphabetical") next.sort((a, b) => a.title.localeCompare(b.title));
-    if (sort === "date") next.sort((a, b) => a.startAt.localeCompare(b.startAt));
-    return next;
-  }, [events, query, sort]);
-
-  const nextEvent = useMemo(() => events.filter((event) => eventPhase(event) !== "past" && event.status === "published").sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [events]);
-  const nextEventMonthOffset = useMemo(() => {
-    if (!nextEvent) return 0;
-    const [year, month] = eventDayKey(nextEvent.startAt).split("-").map(Number);
-    const offset = (year - calendarStart.year) * 12 + (month - calendarStart.month);
-    return offset > 0 && offset <= 11 ? offset : 0;
-  }, [nextEvent, calendarStart.month, calendarStart.year]);
-  const calendarMonthOffset = chosenMonthOffset ?? nextEventMonthOffset;
-  const calendarMonth = useMemo(() => new Date(Date.UTC(calendarStart.year, calendarStart.month - 1 + calendarMonthOffset, 1)), [calendarMonthOffset, calendarStart.month, calendarStart.year]);
-  const calendarDays = useMemo(() => {
-    const year = calendarMonth.getUTCFullYear();
-    const month = calendarMonth.getUTCMonth();
-    const firstDay = new Date(Date.UTC(year, month, 1));
-    const dayCount = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    return [...Array<Date | null>(firstDay.getUTCDay()).fill(null), ...Array.from({ length: dayCount }, (_, index) => new Date(Date.UTC(year, month, index + 1)))];
-  }, [calendarMonth]);
-  const calendarEvents = useMemo(() => events.filter((event) => event.status === "published" && eventPhase(event) !== "past").reduce<Record<string, RegistrationEvent[]>>((byDay, event) => {
-    const key = eventDayKey(event.startAt);
-    (byDay[key] ??= []).push(event);
-    return byDay;
-  }, {}), [events]);
-  // These are derived directly from serializable client state. Comparing Date
-  // instances here made the server and browser disagree in some time zones.
-  const isFirstCalendarMonth = calendarMonthOffset === 0;
-  const isLastCalendarMonth = calendarMonthOffset === 11;
-
-  function scrollToCalendar(event: React.MouseEvent<HTMLAnchorElement>) {
-    event.preventDefault();
-    const calendar = document.getElementById("event-calendar");
-    if (!calendar) return;
-    const root = document.documentElement;
-    const previousScrollBehavior = root.style.scrollBehavior;
-    root.style.scrollBehavior = "auto";
-    window.scrollTo(0, Math.max(0, calendar.getBoundingClientRect().top + window.scrollY - 32));
-    root.style.scrollBehavior = previousScrollBehavior;
-    window.history.replaceState(null, "", "#event-calendar");
-  }
+function useStaggeredReveal(visible: RegistrationEvent[]) {
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(() => new Set());
+  const [durations, setDurations] = useState<Record<string, number>>({});
+  const nodes = useRef(new Map<string, HTMLElement>());
+  const revealedRef = useRef(new Set<string>());
+  const nextRevealAt = useRef(0);
 
   useEffect(() => {
     if (!visible.length) return;
     if (typeof IntersectionObserver === "undefined") {
-      const ids = visible.map((event) => event.id);
-      revealedEventIdsRef.current = new Set([...revealedEventIdsRef.current, ...ids]);
-      setRevealedEventIds(new Set(revealedEventIdsRef.current));
+      revealedRef.current = new Set([...revealedRef.current, ...visible.map((event) => event.id)]);
+      setRevealedIds(new Set(revealedRef.current));
       return;
     }
     const queuedIds = new Set<string>();
     const queue: string[] = [];
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let startFrame: number | undefined;
     let lastScrollY = window.scrollY;
     let lastScrollTime = performance.now();
     let scrollVelocity = 0;
 
     const onScroll = () => {
       const now = performance.now();
-      const elapsed = Math.max(now - lastScrollTime, 16);
-      scrollVelocity = Math.min(Math.abs(window.scrollY - lastScrollY) / elapsed, 3);
+      const elapsed = Math.max(now - lastScrollTime, MIN_FRAME_MS);
+      scrollVelocity = Math.min(Math.abs(window.scrollY - lastScrollY) / elapsed, MAX_SCROLL_VELOCITY);
       lastScrollY = window.scrollY;
       lastScrollTime = now;
     };
     const revealNext = () => {
       timer = undefined;
       const now = performance.now();
-      const wait = nextRevealAtRef.current - now;
+      const wait = nextRevealAt.current - now;
       if (wait > 0) {
         timer = setTimeout(revealNext, wait);
         return;
@@ -129,34 +107,135 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
       const id = queue.shift();
       if (!id) return;
       queuedIds.delete(id);
-      const duration = Math.max(220, Math.round(480 - scrollVelocity * 90));
-      const startStagger = Math.max(18, Math.round(84 - scrollVelocity * 18));
-      revealedEventIdsRef.current.add(id);
-      setRevealDurations((current) => ({ ...current, [id]: duration }));
-      setRevealedEventIds(new Set(revealedEventIdsRef.current));
-      nextRevealAtRef.current = now + startStagger;
-      timer = setTimeout(revealNext, startStagger);
+      const duration = Math.max(MIN_REVEAL_DURATION_MS, Math.round(REVEAL_DURATION_MS - scrollVelocity * REVEAL_SPEEDUP_PER_VELOCITY_MS));
+      const stagger = Math.max(MIN_REVEAL_STAGGER_MS, Math.round(REVEAL_STAGGER_MS - scrollVelocity * STAGGER_SPEEDUP_PER_VELOCITY_MS));
+      revealedRef.current.add(id);
+      setDurations((current) => ({ ...current, [id]: duration }));
+      setRevealedIds(new Set(revealedRef.current));
+      nextRevealAt.current = now + stagger;
+      timer = setTimeout(revealNext, stagger);
     };
     const observer = new IntersectionObserver((entries) => {
-      const ids = entries.filter((entry) => entry.isIntersecting).map((entry) => entry.target.getAttribute("data-event-id")).filter((id): id is string => id !== null).filter((id) => !revealedEventIdsRef.current.has(id) && !queuedIds.has(id));
+      const intersecting = entries.filter((entry) => entry.isIntersecting);
+      const ids = intersecting
+        .map((entry) => entry.target.getAttribute("data-event-id"))
+        .filter((id): id is string => id !== null && !revealedRef.current.has(id) && !queuedIds.has(id));
       if (!ids.length) return;
       ids.forEach((id) => { queuedIds.add(id); queue.push(id); });
       if (!timer) revealNext();
-      entries.filter((entry) => entry.isIntersecting).forEach((entry) => observer.unobserve(entry.target));
-    }, { threshold: 0.15, rootMargin: "0px 0px -8% 0px" });
+      intersecting.forEach((entry) => observer.unobserve(entry.target));
+    }, REVEAL_OBSERVER_OPTIONS);
 
-    // Give the hidden state a paint before observing. Without this beat, the
-    // first visible row can receive both classes in one render and skip its entrance.
-    startFrame = requestAnimationFrame(() => {
-      startFrame = requestAnimationFrame(() => {
-        eventCardRefs.current.forEach((node, id) => {
-          if (!revealedEventIdsRef.current.has(id)) observer.observe(node);
-        });
+    const cancelObserve = afterNextPaint(() => {
+      nodes.current.forEach((node, id) => {
+        if (!revealedRef.current.has(id)) observer.observe(node);
       });
     });
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => { observer.disconnect(); window.removeEventListener("scroll", onScroll); if (timer) clearTimeout(timer); if (startFrame) cancelAnimationFrame(startFrame); };
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      if (timer) clearTimeout(timer);
+      cancelObserve();
+    };
   }, [visible]);
+
+  const refFor = (id: string) => (node: HTMLElement | null) => {
+    if (node) nodes.current.set(id, node);
+    else nodes.current.delete(id);
+  };
+  return { revealedIds, durationFor: (id: string) => durations[id] ?? REVEAL_DURATION_MS, refFor };
+}
+
+function EventStatus({ phase, soldOut }: EventStatusProps) {
+  if (soldOut) return <span className="status-pill status-pill--closed"><LockKeyhole aria-hidden="true" size={14} /><span>Event full</span></span>;
+  if (phase === "open") return <span className="status-pill status-pill--open"><BadgeCheck aria-hidden="true" size={14} /><span>Registration open</span></span>;
+  if (phase === "upcoming") return <span className="status-pill status-pill--upcoming"><CalendarClock aria-hidden="true" size={14} /><span>Opens soon</span></span>;
+  return <span className="status-pill status-pill--closed"><LockKeyhole aria-hidden="true" size={14} /><span>Registration closed</span></span>;
+}
+
+function EventCard({ event, revealed, revealDuration, cardRef }: EventCardProps) {
+  const openSlots = event.slots.filter((slot) => slot.remaining !== 0).length;
+  const start = new Date(event.startAt);
+  return (
+    <Link
+      href={`/events/${event.slug}`}
+      className={`event-card event-card--motion-ready ${revealed ? "event-card--revealed" : ""}`}
+      data-event-id={event.id}
+      ref={cardRef}
+      style={{ "--event-accent": event.accentColor, "--reveal-duration": `${revealDuration}ms` } as React.CSSProperties}
+    >
+      <div className="event-card__stripe" />
+      <div className="event-card__top"><EventStatus phase={eventPhase(event)} soldOut={isSoldOut(event)} /><span className="event-card__date"><strong>{cardMonth.format(start).toUpperCase()}</strong>{cardDay.format(start)}</span></div>
+      <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p></div>
+      <ul><li><CalendarDays size={17} />{formatRange(event.startAt, event.endAt)}</li><li><MapPin size={17} />{event.location}</li>{openSlots > 0 && <li><Clock3 size={17} />{plural(openSlots, "time slot")} available</li>}{event.remaining !== null && <li><Users size={17} />{plural(event.remaining, "spot")} remaining</li>}</ul>
+      <span className="event-card__link">View event <ArrowRight size={20} /></span>
+    </Link>
+  );
+}
+
+function CalendarDay({ day, events }: CalendarDayProps) {
+  if (!day) return <div className="calendar-grid__day calendar-grid__day--blank" role="gridcell" />;
+  return <div className="calendar-grid__day" role="gridcell" aria-label={`${dayLabel.format(day)}${events.length ? `, ${plural(events.length, "event")}` : ""}`}>
+    <span className="calendar-grid__date">{day.getUTCDate()}</span>
+    {events.length > 0 && <span className="calendar-grid__events">{events.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatRange(event.startAt, event.endAt)}, ${event.location}`}>
+      <span aria-hidden="true">{event.title}</span>
+      <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatRange(event.startAt, event.endAt)} · {event.location}</small></span>
+    </Link>)}</span>}
+  </div>;
+}
+
+function scrollToCalendar(clickEvent: React.MouseEvent<HTMLAnchorElement>) {
+  clickEvent.preventDefault();
+  const calendar = document.getElementById(CALENDAR_ID);
+  if (!calendar) return;
+  const root = document.documentElement;
+  const previousScrollBehavior = root.style.scrollBehavior;
+  root.style.scrollBehavior = "auto";
+  window.scrollTo(0, Math.max(0, calendar.getBoundingClientRect().top + window.scrollY - CALENDAR_SCROLL_OFFSET_PX));
+  root.style.scrollBehavior = previousScrollBehavior;
+  window.history.replaceState(null, "", `#${CALENDAR_ID}`);
+}
+
+export function EventDirectory({ calendarStart }: EventDirectoryProps) {
+  const [events, setEvents] = useState<RegistrationEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort>("custom");
+  const [loadError, setLoadError] = useState(false);
+  const [chosenMonthOffset, setCalendarMonthOffset] = useState<number | null>(null);
+
+  useEffect(() => {
+    getJson<{ events?: RegistrationEvent[] }>("/api/events")
+      .then((data) => setEvents(data.events ?? []))
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const upcoming = useMemo(() => events.filter(isUpcoming), [events]);
+  const visible = useMemo(() => {
+    const normalized = query.toLowerCase().trim();
+    const next = upcoming.filter((event) => !normalized || `${event.title} ${event.summary} ${event.location}`.toLowerCase().includes(normalized));
+    if (sort === "alphabetical") next.sort((a, b) => a.title.localeCompare(b.title));
+    if (sort === "date") next.sort((a, b) => a.startAt.localeCompare(b.startAt));
+    return next;
+  }, [upcoming, query, sort]);
+  const { revealedIds, durationFor, refFor } = useStaggeredReveal(visible);
+
+  const nextEvent = useMemo(() => [...upcoming].sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [upcoming]);
+  const nextEventMonthOffset = useMemo(() => {
+    if (!nextEvent) return 0;
+    const { year, month } = centralWall(new Date(nextEvent.startAt));
+    const offset = (year - calendarStart.year) * MONTHS_PER_YEAR + (month - calendarStart.month);
+    return offset > 0 && offset < CALENDAR_MONTHS ? offset : 0;
+  }, [nextEvent, calendarStart.month, calendarStart.year]);
+  const calendarMonthOffset = chosenMonthOffset ?? nextEventMonthOffset;
+  const calendarMonth = useMemo(() => new Date(Date.UTC(calendarStart.year, calendarStart.month - 1 + calendarMonthOffset, 1)), [calendarMonthOffset, calendarStart.month, calendarStart.year]);
+  const calendarDays = useMemo(() => monthDays(calendarMonth), [calendarMonth]);
+  const eventsByDay = useMemo(() => upcoming.reduce<Record<string, RegistrationEvent[]>>((byDay, event) => {
+    (byDay[eventDayKey(event.startAt)] ??= []).push(event);
+    return byDay;
+  }, {}), [upcoming]);
 
   return (
     <>
@@ -165,12 +244,12 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
           <div className="directory-desk__workspace">
             <div className="directory-desk__heading">
               <h1 id="events-heading">SEC Events</h1>
-              <p aria-live="polite">{loading ? "Loading events" : query ? `${visible.length} matching event${visible.length === 1 ? "" : "s"}` : `${visible.length} upcoming event${visible.length === 1 ? "" : "s"}`}</p>
+              <p aria-live="polite">{loading ? "Loading events" : plural(visible.length, query ? "matching event" : "upcoming event")}</p>
             </div>
             <div className="directory-desk__controls">
               <label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events" aria-label="Search events" /></label>
-              <label className="select-label"><span>Sort by</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="custom">Featured</option><option value="date">Soonest</option><option value="alphabetical">A–Z</option></select></label>
-              <a className="directory-desk__calendar-link" href="#event-calendar" onClick={scrollToCalendar}>Browse calendar <ArrowRight size={17} /></a>
+              <label className="select-label"><span>Sort by</span><select value={sort} onChange={(event) => setSort(event.target.value as Sort)}>{SORTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+              <a className="directory-desk__calendar-link" href={`#${CALENDAR_ID}`} onClick={scrollToCalendar}>Browse calendar <ArrowRight size={17} /></a>
             </div>
           </div>
           <aside className="directory-desk__next" aria-live="polite">
@@ -187,52 +266,23 @@ export function EventDirectory({ calendarStart }: { calendarStart: { year: numbe
       <section id="event-directory" className="events-section shell">
         {loading ? <div className="loading-grid"><div /><div /><div /></div> : visible.length ? (
           <div className="event-grid">
-            {visible.map((event) => {
-              const phase = eventPhase(event);
-              const openSlots = event.slots.filter((slot) => slot.remaining !== 0).length;
-              const soldOut = event.capacityMode === "event" ? event.remaining === 0 : Boolean(event.slots.length && event.slots.every((slot) => slot.remaining === 0));
-              return (
-                <Link
-                  href={`/events/${event.slug}`}
-                  className={`event-card event-card--motion-ready ${revealedEventIds.has(event.id) ? "event-card--revealed" : ""}`}
-                  data-event-id={event.id}
-                  key={event.id}
-                  ref={(node) => { if (node) eventCardRefs.current.set(event.id, node); else eventCardRefs.current.delete(event.id); }}
-                  style={{ "--event-accent": event.accentColor, "--reveal-duration": `${revealDurations[event.id] ?? 480}ms` } as React.CSSProperties}
-                >
-                  <div className="event-card__stripe" />
-                  <div className="event-card__top"><EventStatus phase={phase} soldOut={soldOut} /><span className="event-card__date"><strong>{new Date(event.startAt).toLocaleString("en-US", { month: "short", timeZone: "America/Chicago" }).toUpperCase()}</strong>{new Date(event.startAt).toLocaleString("en-US", { day: "2-digit", timeZone: "America/Chicago" })}</span></div>
-                  <div className="event-card__body"><h3>{event.title}</h3><p>{event.summary}</p></div>
-                  <ul><li><CalendarDays size={17} />{formatRange(event.startAt, event.endAt)}</li><li><MapPin size={17} />{event.location}</li>{openSlots > 0 && <li><Clock3 size={17} />{openSlots} time slot{openSlots === 1 ? "" : "s"} available</li>}{event.remaining !== null && <li><Users size={17} />{event.remaining} spot{event.remaining === 1 ? "" : "s"} remaining</li>}</ul>
-                  <span className="event-card__link">View event <ArrowRight size={20} /></span>
-                </Link>
-              );
-            })}
+            {visible.map((event) => <EventCard key={event.id} event={event} revealed={revealedIds.has(event.id)} revealDuration={durationFor(event.id)} cardRef={refFor(event.id)} />)}
           </div>
         ) : loadError ? <div className="empty-state"><CalendarDays size={36} /><h3>Events couldn&apos;t load</h3><p>Refresh the page to try again.</p></div> : <div className="empty-state"><CalendarDays size={36} /><h3>No matching events</h3><p>Try another search, or check back soon for new opportunities.</p></div>}
       </section>
-      <section id="event-calendar" className="calendar-section" aria-labelledby="calendar-heading">
+      <section id={CALENDAR_ID} className="calendar-section" aria-labelledby="calendar-heading">
         <div className="shell">
           <div className="calendar-section__head">
             <div><h2 id="calendar-heading">Plan ahead</h2><p>Browse SEC events through the next twelve months.</p></div>
             <div className="calendar-controls">
-              <button type="button" onClick={() => setCalendarMonthOffset(calendarMonthOffset - 1)} disabled={isFirstCalendarMonth} aria-label="Previous month"><ChevronLeft size={19} /></button>
+              <button type="button" onClick={() => setCalendarMonthOffset(calendarMonthOffset - 1)} disabled={calendarMonthOffset === 0} aria-label="Previous month"><ChevronLeft size={19} /></button>
               <h3 aria-live="polite">{monthLabel.format(calendarMonth)}</h3>
-              <button type="button" onClick={() => setCalendarMonthOffset(calendarMonthOffset + 1)} disabled={isLastCalendarMonth} aria-label="Next month"><ChevronRight size={19} /></button>
+              <button type="button" onClick={() => setCalendarMonthOffset(calendarMonthOffset + 1)} disabled={calendarMonthOffset === CALENDAR_MONTHS - 1} aria-label="Next month"><ChevronRight size={19} /></button>
             </div>
           </div>
           <div className="calendar-grid" role="grid" aria-label={`${monthLabel.format(calendarMonth)} event calendar`}>
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
-            {calendarDays.map((day, index) => {
-              const dayEvents = day ? calendarEvents[dayKey(day)] ?? [] : [];
-              return <div className={`calendar-grid__day ${day ? "" : "calendar-grid__day--blank"}`} role="gridcell" key={day ? dayKey(day) : `blank-${index}`} aria-label={day ? `${dayLabel.format(day)}${dayEvents.length ? `, ${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}` : ""}` : undefined}>
-                {day && <span className="calendar-grid__date">{day.getUTCDate()}</span>}
-                {dayEvents.length > 0 && <span className="calendar-grid__events">{dayEvents.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatRange(event.startAt, event.endAt)}, ${event.location}`}>
-                  <span aria-hidden="true">{event.title}</span>
-                  <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatRange(event.startAt, event.endAt)} · {event.location}</small></span>
-                </Link>)}</span>}
-              </div>;
-            })}
+            {WEEKDAYS.map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
+            {calendarDays.map((day, index) => <CalendarDay key={day ? dayKey(day) : `blank-${index}`} day={day} events={day ? eventsByDay[dayKey(day)] ?? [] : []} />)}
           </div>
           <p className="calendar-note">Select an event marker to view details and register.</p>
         </div>

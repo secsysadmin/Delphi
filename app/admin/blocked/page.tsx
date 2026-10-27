@@ -4,7 +4,9 @@ import { ShieldAlert } from "lucide-react";
 
 export const metadata: Metadata = { title: "Access denied" };
 
-export default async function AdminBlockedPage({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
+type AdminBlockedPageProps = { searchParams: Promise<{ email?: string }> };
+
+export default async function AdminBlockedPage({ searchParams }: AdminBlockedPageProps) {
   const { email } = await searchParams;
   return (
     <section className="login-page">

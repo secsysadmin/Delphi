@@ -2,6 +2,17 @@
 
 import { useEffect, useRef } from "react";
 
+type ConfirmDialogProps = {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: "default" | "danger";
+  onConfirm: () => void;
+  onCancel: () => void;
+};
+
 export function ConfirmDialog({
   open,
   title,
@@ -11,16 +22,7 @@ export function ConfirmDialog({
   tone = "default",
   onConfirm,
   onCancel,
-}: {
-  open: boolean;
-  title: string;
-  description: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  tone?: "default" | "danger";
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
+}: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {

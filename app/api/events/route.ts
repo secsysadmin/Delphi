@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
+import { rejectNonAdmin } from "@/lib/api-guard";
 import { publicError } from "@/lib/errors";
-import { isAdmin, isSameOriginRequest } from "@/lib/auth";
 import { getEvents, saveEvent } from "@/lib/store";
 import type { EventInput } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const wantsDrafts = url.searchParams.get("scope") === "all";
-  if (wantsDrafts && !(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const wantsDrafts = new URL(request.url).searchParams.get("scope") === "all";
+  const rejected = wantsDrafts ? await rejectNonAdmin() : null;
+  if (rejected) return rejected;
   const events = await getEvents({ includeDrafts: wantsDrafts });
-  return NextResponse.json({ events, mode: process.env.DATABASE_URL ? "database" : "preview" });
+  return NextResponse.json({ events });
 }
 
 export async function POST(request: Request) {
-  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (!(await isAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const rejected = await rejectNonAdmin(request);
+  if (rejected) return rejected;
   try {
     const event = await saveEvent((await request.json()) as EventInput);
     return NextResponse.json({ event }, { status: 201 });
