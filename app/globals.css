@@ -539,7 +539,7 @@ select:focus, input:focus, textarea:focus { border-color: var(--maroon); box-sha
 /* Registration operations: supporting data must remain legible at a glance. */
 .registrations-page .registrations-head p, .registrations-page .metric-card small, .registrations-page .registration-table th, .registrations-page .registration-table small { color: #514941; }
 .registrations-page > .back-link { color: var(--maroon); }
-.button--selection:disabled { border-color: #998b7c; color: #514941; background: transparent; opacity: 1; cursor: not-allowed; }
+.button--selection:disabled { border-color: var(--line); color: #8a8580; background: transparent; opacity: 1; cursor: not-allowed; }
 .registration-table__actions { width: 1%; text-align: right; }
 .registration-delete { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid #9c4a45; color: #7b211d; background: transparent; }
 .registration-delete:hover { border-color: #7b211d; color: #fff8ef; background: #7b211d; }
@@ -821,7 +821,7 @@ label > span > small { color: var(--muted); font-weight: 500; }
 .email-status--failed { color: var(--danger); }
 .email-status--previewed, .email-status--pending { color: var(--muted); }
 .registration-table__actions > button + button { margin-left: 6px; }
-.registration-table tr > :last-child { position: sticky; right: 0; background: #fff; box-shadow: -1px 0 0 var(--line); }
+.registration-table tr > :last-child { position: sticky; right: 0; background: #fff; box-shadow: -1px 0 0 var(--line), -10px 0 12px -10px rgba(0,0,0,.25); }
 .registration-table thead tr > :last-child { background: #f8f6f3; }
 .registration-resend { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); color: var(--maroon); background: transparent; }
 .registration-resend:hover { border-color: var(--maroon); }
@@ -829,12 +829,42 @@ label > span > small { color: var(--muted); font-weight: 500; }
 .registration-resend svg, .registration-delete svg { width: 15px; }
 .registrations-page > .form-success, .registrations-page > .form-error { margin-top: 22px; }
 
+.builder-card > :not(.builder-card__head) + * { margin-top: 20px; }
+.builder-card > label { display: flex; flex-direction: column; gap: 7px; color: #393532; font-size: .8125rem; font-weight: 750; }
+
+@media (pointer: coarse) {
+  input:is([type="checkbox"], [type="radio"]):not(.slot-card input) { width: 20px; height: 20px; }
+}
+
+@media (max-width: 650px), (hover: none) and (pointer: coarse) and (max-width: 900px) {
+  .event-card__link { width: auto; }
+}
+
 @media (max-width: 650px) {
+  .nav-links a, .nav-action { display: inline-flex; align-items: center; min-height: 44px; }
+  .tabs button { min-height: 44px; }
+  .metric-grid--three > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
   .editor-actions { align-items: stretch; width: 100%; }
   .editor-actions .button, .editor-bottom-actions .button, .registrations-head .button { width: 100%; }
   .email-preview-tools { align-items: stretch; flex-direction: column; }
   .email-preview__picker select { width: 100%; min-width: 0; }
 }
+.select-label select:focus { border-color: var(--maroon); }
+.search-box input, .search-box input:focus { height: 100%; border: 0; padding: 0; box-shadow: none; background: transparent; }
+.calendar-agenda { display: none; }
+
+@media (max-width: 650px) {
+  .calendar-event > span:first-child { height: 6px; padding: 0; font-size: 0; }
+  .calendar-event__tooltip { display: none; }
+  .calendar-agenda { display: grid; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
+  .calendar-agenda--empty { display: block; color: var(--muted); font-size: .875rem; }
+  .calendar-agenda a { display: grid; gap: 3px; border: 1px solid var(--line); border-left: 3px solid var(--maroon); padding: 12px 14px; color: var(--ink); background: #fff; text-decoration: none; }
+  .calendar-agenda strong { font-size: .9375rem; }
+  .calendar-agenda span { color: var(--muted); font-size: .8125rem; }
+  .calendar-note { display: none; }
+}
+
 .footer-staff { color: inherit; font-size: .75rem; opacity: .7; text-decoration: none; transition: opacity .15s; }
 .footer-staff:hover, .footer-staff:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
 .calendar-section { overflow-x: clip; }
