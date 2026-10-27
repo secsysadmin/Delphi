@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectNonAdmin } from "@/lib/api-guard";
+import { rejectNonAdminMutation } from "@/lib/api-guard";
 import { currentAdminEmail } from "@/lib/auth";
 import { canSendEmail, sendConfirmation } from "@/lib/email";
 import { publicError } from "@/lib/errors";
@@ -8,7 +8,7 @@ import { PREVIEW_PERSON } from "@/lib/utils";
 import type { EventInput, Registration } from "@/types";
 
 export async function POST(request: Request) {
-  const rejected = await rejectNonAdmin(request);
+  const rejected = await rejectNonAdminMutation(request);
   if (rejected) return rejected;
   const to = await currentAdminEmail();
   if (!to) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

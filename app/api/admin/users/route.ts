@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminUser, listAdminUsers } from "@/lib/admin-users";
-import { rejectNonAdmin } from "@/lib/api-guard";
+import { rejectNonAdmin, rejectNonAdminMutation } from "@/lib/api-guard";
 import { publicError } from "@/lib/errors";
 
 export async function GET() {
@@ -10,7 +10,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const rejected = await rejectNonAdmin(request);
+  const rejected = await rejectNonAdminMutation(request);
   if (rejected) return rejected;
   try {
     const { email } = await request.json() as { email?: string };

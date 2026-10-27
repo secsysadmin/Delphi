@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
 
-const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+const ADMIN_EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const NO_DATABASE_MESSAGE = "A database connection is required to manage administrators.";
 
 type AdminUserRow = {
@@ -43,7 +43,7 @@ export async function listAdminUsers(): Promise<AdminUser[]> {
 export async function createAdminUser(email: string) {
   if (!sql) throw new Error(NO_DATABASE_MESSAGE);
   const normalizedEmail = normalizeEmail(email);
-  if (!EMAIL_PATTERN.test(normalizedEmail)) throw new Error("Enter a valid administrator email address.");
+  if (!ADMIN_EMAIL_PATTERN.test(normalizedEmail)) throw new Error("Enter a valid administrator email address.");
   const existing = await getAdminUserByEmail(normalizedEmail);
   if (existing) throw new Error("An administrator with that email already exists.");
   const [user] = await sql<AdminUserRow[]>`

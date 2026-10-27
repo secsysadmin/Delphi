@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectNonAdmin } from "@/lib/api-guard";
+import { rejectNonAdmin, rejectNonAdminMutation } from "@/lib/api-guard";
 import { publicError } from "@/lib/errors";
 import { getEvents, saveEvent } from "@/lib/store";
 import type { EventInput } from "@/types";
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const rejected = await rejectNonAdmin(request);
+  const rejected = await rejectNonAdminMutation(request);
   if (rejected) return rejected;
   try {
     const event = await saveEvent((await request.json()) as EventInput);

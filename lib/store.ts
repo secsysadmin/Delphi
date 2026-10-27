@@ -24,7 +24,7 @@ const CHOICE_TYPES = new Set(["select", "radio", "multiselect"]);
 const FALLBACK_SLUG = "event";
 const SLUG_SAVE_ATTEMPTS = 3;
 const UIN_PATTERN = /^\d{9}$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const REGISTRANT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TAMU_EMAIL_SUFFIX = "@tamu.edu";
 const MAX_LENGTH = {
   title: 160,
@@ -495,7 +495,7 @@ function cleanRegistration(event: RegistrationEvent, rawInput: RegistrationInput
     answers: cleanAnswers(event.formFields, rawInput.answers),
   };
   if (!input.firstName || !input.lastName) throw new Error("First and last name are required.");
-  if (!EMAIL_PATTERN.test(input.email)) throw new Error("Enter a valid email address.");
+  if (!REGISTRANT_EMAIL_PATTERN.test(input.email)) throw new Error("Enter a valid email address.");
   if (event.tamuEmailOnly && !input.email.endsWith(TAMU_EMAIL_SUFFIX)) throw new Error("This event is only open to @tamu.edu email addresses.");
   if (input.uin && !UIN_PATTERN.test(input.uin)) throw new Error("Enter your 9-digit UIN.");
   if (event.uinRequired && !input.uin) throw new Error("UIN is required.");

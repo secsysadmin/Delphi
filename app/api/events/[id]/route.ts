@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectNonAdmin } from "@/lib/api-guard";
+import { rejectNonAdminMutation } from "@/lib/api-guard";
 import { isAdmin } from "@/lib/auth";
 import { publicError } from "@/lib/errors";
 import { archiveEvent, getEvent, saveEvent } from "@/lib/store";
@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const rejected = await rejectNonAdmin(request);
+  const rejected = await rejectNonAdminMutation(request);
   if (rejected) return rejected;
   try {
     const { id } = await params;
@@ -33,7 +33,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const rejected = await rejectNonAdmin(request);
+  const rejected = await rejectNonAdminMutation(request);
   if (rejected) return rejected;
   try {
     const { id } = await params;

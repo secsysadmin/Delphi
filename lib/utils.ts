@@ -20,7 +20,7 @@ const TIME_ZONE_DRIFT_PASSES = 3;
 const centralParts = new Intl.DateTimeFormat("en-US", { timeZone: EVENT_TIME_ZONE, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 type EventTimes = { startAt: string; endAt: string; registrationOpenAt: string; registrationCloseAt: string };
-type RegistrationWindow = { status: string; registrationCloseAt: string; endAt: string };
+export type RegistrationWindow = { status: string; registrationCloseAt: string; endAt: string };
 type CapacityShape = { capacityMode: string; remaining: number | null; slots: Array<{ remaining: number | null }> };
 type TemplatePerson = { firstName: string; lastName: string };
 type TemplateEvent = { title: string; startAt: string; location: string; confirmationSubject: string; confirmationBody: string };

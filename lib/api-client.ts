@@ -30,7 +30,7 @@ export async function getJson<T>(url: string): Promise<T> {
   return data;
 }
 
-export type SendResult<T> = { ok: boolean; data: Partial<T>; error?: string };
+type SendResult<T> = { ok: boolean; data: Partial<T>; error?: string };
 
 export async function sendJson<T>(url: string, init: RequestInit): Promise<SendResult<T>> {
   const response = await fetch(url, init).catch(() => null);

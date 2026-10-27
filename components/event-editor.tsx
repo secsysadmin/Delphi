@@ -22,6 +22,7 @@ import {
   fromCentralInput,
   registrationWindowChanged,
   registrationWindowProblem,
+  type RegistrationWindow,
   templateValues,
   toCentralInput,
 } from "@/lib/utils";
@@ -30,7 +31,6 @@ import { RichText } from "@/components/rich-text";
 
 type Slot = EventInput["slots"][number];
 type AutosaveState = "idle" | "pending" | "saving" | "saved" | "error";
-type RegistrationWindow = { status: EventInput["status"]; registrationCloseAt: string; endAt: string };
 type TemplateTarget = HTMLInputElement | HTMLTextAreaElement;
 type EventEditorProps = { eventId?: string };
 type EditorSectionProps = { id: string; number: string; title: string; description: string; children: React.ReactNode };
@@ -138,7 +138,7 @@ function EmailPreview({ event, previewSlotId }: EmailPreviewProps) {
   const usesSlotTemplate = Boolean(slot?.confirmationSubject || slot?.confirmationBody);
   return <>
     <p className="email-preview__subject"><span>Subject</span>{fillTemplate(template.subject, values)}</p>
-    <div className="email-preview"><div><small>STUDENT ENGINEERS&apos; COUNCIL</small><strong>Registration Confirmed</strong></div><div><p>{fillTemplate(template.body, values)}</p><section style={{ background: colors.background, borderColor: colors.background, color: colors.foreground }}><strong>{event.title || "Your event"}</strong>{slot && <span>{slot.label}</span>}<span>{when}</span><span>{values.room}</span></section><small className="email-preview__note">The card uses the <a href="#details">event color</a>{event.slots.length ? "; each time slot can override it under “Customize this slot’s confirmation.”" : "."}</small>{slot && <small className="email-preview__note">{usesSlotTemplate ? `${slot.label || "This session"} has its own subject or message, so its registrants get the override above instead of the event template.` : `Showing what ${slot.label || "this session"} registrants receive.`}</small>}</div></div>
+    <div className="email-preview"><div><small>STUDENT ENGINEERS&apos; COUNCIL</small><strong>Registration Confirmed</strong></div><div><p>{fillTemplate(template.body, values)}</p><section className="email-preview__card" style={{ "--card-background": colors.background, "--card-foreground": colors.foreground } as React.CSSProperties}><strong>{event.title || "Your event"}</strong>{slot && <span>{slot.label}</span>}<span>{when}</span><span>{values.room}</span></section><small className="email-preview__note">The card uses the <a href="#details">event color</a>{event.slots.length ? "; each time slot can override it under “Customize this slot’s confirmation.”" : "."}</small>{slot && <small className="email-preview__note">{usesSlotTemplate ? `${slot.label || "This session"} has its own subject or message, so its registrants get the override above instead of the event template.` : `Showing what ${slot.label || "this session"} registrants receive.`}</small>}</div></div>
   </>;
 }
 

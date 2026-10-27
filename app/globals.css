@@ -222,7 +222,7 @@ input:is([type="checkbox"], [type="radio"]):focus-visible { outline: 2px solid v
 .event-table__row > div:not(.event-name):not(.row-actions) { display: flex; flex-direction: column; align-items: start; gap: 5px; }
 .event-table__row small { display: block; color: var(--muted); font-size: .75rem; line-height: 1.4; }
 .event-name { display: flex; gap: 12px; align-items: center; }
-.event-dot { width: 8px; height: 42px; border-radius: 0; flex: 0 0 auto; }
+.event-dot { width: 8px; height: 42px; border-radius: 0; flex: 0 0 auto; background: var(--event-accent); }
 .event-name strong { display: block; margin-bottom: 4px; }
 .row-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .row-actions a, .row-actions button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #dfd8d1; border-radius: 0; color: #625c56; background: white; }
@@ -292,6 +292,7 @@ input:is([type="checkbox"], [type="radio"]):focus-visible { outline: 2px solid v
 .email-preview p { white-space: pre-line; font-size: .8125rem; line-height: 1.6; }
 .email-preview__note { display: block; margin-top: 10px; color: var(--muted); font-size: .75rem; }
 .email-preview section { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); padding: 13px; background: var(--paper); font-size: .75rem; }
+.email-preview .email-preview__card { background: var(--card-background); border-color: var(--card-background); color: var(--card-foreground); }
 .editor-bottom-actions { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
 .danger-link { border: 0; color: #9b2529; background: transparent; font-size: .75rem; text-decoration: underline; }
 .button--danger { color: white; background: #9b2529; }

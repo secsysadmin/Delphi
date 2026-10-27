@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, Download, Mail, RotateCw, Search, Send, Trash2, Users } from "lucide-react";
 import { getJson, jsonRequest, sendJson } from "@/lib/api-client";
+import type { BroadcastResult } from "@/lib/email";
 import { TEMPLATE_VARIABLES, formatAnswer, formatDate, formatRange, isQuestion, plural } from "@/lib/utils";
 import type { FormField, Registration, RegistrationEvent } from "@/types";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 type Notice = { ok: boolean; text: string };
-type BroadcastResponse = { sent: number; failed: number; failedEmails: string[]; preview: boolean };
 type RegistrationManagerProps = { eventId: string };
 type ParticipantRowProps = {
   registration: Registration;
@@ -28,7 +28,7 @@ const SENT_EMAIL_STATUSES = new Set(["sent", "delivered"]);
 const DEFAULT_BROADCAST_SUBJECT = "An update about {{event}}";
 const DEFAULT_BROADCAST_BODY = "Howdy {{firstName}}!\n\nWe have an update to share about {{event}}:";
 
-function broadcastNotice({ sent, failed, failedEmails, preview }: Partial<BroadcastResponse>): Notice {
+function broadcastNotice({ sent, failed, failedEmails, preview }: Partial<BroadcastResult>): Notice {
   const count = plural(sent ?? 0, "recipient");
   if (preview) return { ok: true, text: `Previewed for ${count}. Email sending isn't set up on this server, so nothing was sent.` };
   if (!failed) return { ok: true, text: `Sent to ${count}.` };
@@ -69,7 +69,7 @@ export function RegistrationManager({ eventId }: RegistrationManagerProps) {
   async function sendEmail() {
     if (!hasSelectedRegistrants) return;
     setSending(true); setMessage(null);
-    const { ok, data, error } = await sendJson<BroadcastResponse>(`/api/events/${eventId}/email`, jsonRequest("POST", { subject, body, registrationIds: selected }));
+    const { ok, data, error } = await sendJson<BroadcastResult>(`/api/events/${eventId}/email`, jsonRequest("POST", { subject, body, registrationIds: selected }));
     setSending(false);
     setMessage(ok ? broadcastNotice(data) : { ok: false, text: error || "Could not send email." });
   }

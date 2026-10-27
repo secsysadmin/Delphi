@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { rejectNonAdmin } from "@/lib/api-guard";
+import { rejectNonAdminMutation } from "@/lib/api-guard";
 import { sendBroadcast, type BroadcastResult } from "@/lib/email";
 import { publicError } from "@/lib/errors";
 import { getEvent, getRegistrations, logEmail } from "@/lib/store";
@@ -13,7 +13,7 @@ function broadcastStatus(result: BroadcastResult) {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const rejected = await rejectNonAdmin(request);
+  const rejected = await rejectNonAdminMutation(request);
   if (rejected) return rejected;
   try {
     const { id } = await params;
