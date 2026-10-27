@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowRight, BadgeCheck, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock3, LockKeyhole, MapPin, Search, Users } from "lucide-react";
 import { getJson } from "@/lib/api-client";
 import { EVENT_TIME_ZONE, centralWall, dateKey, eventPhase, formatRange, isSoldOut, plural } from "@/lib/utils";
@@ -13,7 +13,7 @@ type CalendarStart = { year: number; month: number };
 type EventDirectoryProps = { calendarStart: CalendarStart };
 type EventStatusProps = { phase: Phase; soldOut: boolean };
 type EventCardProps = { event: RegistrationEvent; revealed: boolean; revealDuration: number; cardRef: (node: HTMLElement | null) => void };
-type CalendarDayProps = { day: Date | null; events: RegistrationEvent[] };
+type CalendarDayProps = { day: Date | null; events: RegistrationEvent[]; compact: boolean };
 type MonthAgendaProps = { events: RegistrationEvent[]; monthName: string };
 
 const CALENDAR_ID = "event-calendar";
@@ -34,6 +34,7 @@ const MIN_REVEAL_STAGGER_MS = 18;
 const STAGGER_SPEEDUP_PER_VELOCITY_MS = 18;
 const MAX_SCROLL_VELOCITY = 3;
 const MIN_FRAME_MS = 16;
+const COMPACT_CALENDAR_QUERY = "(max-width: 650px)";
 const REVEAL_OBSERVER_OPTIONS: IntersectionObserverInit = { threshold: 0.15, rootMargin: "0px 0px -8% 0px" };
 
 const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -175,11 +176,21 @@ function EventCard({ event, revealed, revealDuration, cardRef }: EventCardProps)
   );
 }
 
-function CalendarDay({ day, events }: CalendarDayProps) {
+function subscribeToCompactCalendar(onChange: () => void) {
+  const query = window.matchMedia(COMPACT_CALENDAR_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function useCompactCalendar() {
+  return useSyncExternalStore(subscribeToCompactCalendar, () => window.matchMedia(COMPACT_CALENDAR_QUERY).matches, () => false);
+}
+
+function CalendarDay({ day, events, compact }: CalendarDayProps) {
   if (!day) return <div className="calendar-grid__day calendar-grid__day--blank" role="gridcell" />;
   return <div className="calendar-grid__day" role="gridcell" aria-label={`${dayLabel.format(day)}${events.length ? `, ${plural(events.length, "event")}` : ""}`}>
     <span className="calendar-grid__date">{day.getUTCDate()}</span>
-    {events.length > 0 && <span className="calendar-grid__events">{events.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatRange(event.startAt, event.endAt)}, ${event.location}`}>
+    {events.length > 0 && <span className="calendar-grid__events">{events.map((event) => <Link className="calendar-event" href={`/events/${event.slug}`} key={event.id} aria-label={`View ${event.title}, ${formatRange(event.startAt, event.endAt)}, ${event.location}`} tabIndex={compact ? -1 : undefined} aria-hidden={compact || undefined}>
       <span aria-hidden="true">{event.title}</span>
       <span className="calendar-event__tooltip" role="tooltip"><strong>{event.title}</strong><small>{formatRange(event.startAt, event.endAt)} · {event.location}</small></span>
     </Link>)}</span>}
@@ -229,6 +240,7 @@ export function EventDirectory({ calendarStart }: EventDirectoryProps) {
     return next;
   }, [upcoming, query, sort]);
   const { revealedIds, durationFor, refFor } = useStaggeredReveal(visible);
+  const compactCalendar = useCompactCalendar();
 
   const nextEvent = useMemo(() => [...upcoming].sort((a, b) => a.startAt.localeCompare(b.startAt))[0], [upcoming]);
   const nextEventMonthOffset = useMemo(() => {
@@ -298,7 +310,7 @@ export function EventDirectory({ calendarStart }: EventDirectoryProps) {
           </div>
           <div className="calendar-grid" role="grid" aria-label={`${monthLabel.format(calendarMonth)} event calendar`}>
             {WEEKDAYS.map((day) => <span className="calendar-grid__day-name" role="columnheader" key={day}>{day}</span>)}
-            {calendarDays.map((day, index) => <CalendarDay key={day ? dayKey(day) : `blank-${index}`} day={day} events={day ? eventsByDay[dayKey(day)] ?? [] : []} />)}
+            {calendarDays.map((day, index) => <CalendarDay key={day ? dayKey(day) : `blank-${index}`} day={day} events={day ? eventsByDay[dayKey(day)] ?? [] : []} compact={compactCalendar} />)}
           </div>
           {!loading && !loadError && <MonthAgenda events={monthEvents} monthName={monthLabel.format(calendarMonth)} />}
           <p className="calendar-note">Select an event marker to view details and register.</p>
