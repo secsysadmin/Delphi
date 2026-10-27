@@ -829,7 +829,16 @@ label > span > small { color: var(--muted); font-weight: 500; }
 .registration-resend svg, .registration-delete svg { width: 15px; }
 .registrations-page > .form-success, .registrations-page > .form-error { margin-top: 22px; }
 
+.builder-card > :not(.builder-card__head) + * { margin-top: 20px; }
+.builder-card > label { display: flex; flex-direction: column; gap: 7px; color: #393532; font-size: .8125rem; font-weight: 750; }
+
+@media (max-width: 650px), (hover: none) and (pointer: coarse) and (max-width: 900px) {
+  .event-card__link { width: auto; }
+}
+
 @media (max-width: 650px) {
+  .metric-grid--three > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
   .editor-actions { align-items: stretch; width: 100%; }
   .editor-actions .button, .editor-bottom-actions .button, .registrations-head .button { width: 100%; }
   .email-preview-tools { align-items: stretch; flex-direction: column; }
