@@ -376,7 +376,7 @@ body::before { position: fixed; z-index: -1; inset: 0; content: ""; pointer-even
 .brand-bar::after { display: none; }
 .brand-bar__inner { min-height: 152px; padding-block: 16px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 26px; }
 .sec-wordmark { width: 174px; }
-.brand-title { min-height: 46px; display: flex; align-items: center; border-left: 1px solid var(--line); padding-left: 24px; text-align: left; }
+.brand-title { min-height: 46px; display: flex; align-items: center; padding-left: 24px; text-align: left; }
 .brand-title strong { font-family: var(--font-serif), Georgia, serif; font-size: 1.25rem; font-weight: 500; letter-spacing: -.015em; }
 .tamu-wordmark { width: 286px; }
 .main-nav { color: #fffaf2; background: var(--maroon); }
@@ -642,7 +642,6 @@ html::selection, ::selection { color: #fff; background: var(--maroon); }
 .sec-wordmark__institution { font-size: .8125rem; }
 .sec-wordmark__council { font-size: .8125rem; }
 .brand-bar .sec-wordmark, .brand-title strong { color: var(--maroon); }
-.brand-title { border-left-color: #cfcfcf; }
 .tamu-wordmark { width: 238px; }
 .main-nav { border-block: 1px solid #6e2329; color: #fff; background: var(--maroon); }
 .main-nav__inner { height: 46px; }
