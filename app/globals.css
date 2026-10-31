@@ -851,6 +851,8 @@ label > span > small { color: var(--muted); font-weight: 500; }
   .email-preview__picker select { width: 100%; min-width: 0; }
 }
 .select-label select:focus { border-color: var(--maroon); }
+select, .select-label select, .table-tools select { appearance: none; padding-inline-end: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23500000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 15px center; background-size: 12px 8px; cursor: pointer; }
+@media (forced-colors: active) { select, .select-label select, .table-tools select { appearance: auto; background-image: none; } }
 .search-box input, .search-box input:focus { height: 100%; border: 0; padding: 0; box-shadow: none; background: transparent; }
 .calendar-agenda { display: none; }
 
