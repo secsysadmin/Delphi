@@ -24,9 +24,21 @@ Without environment variables, the app opens in a fully populated preview mode. 
 
 ## Testing
 
-**Test locally in preview mode, not against a shared database.** `npm run dev` reads `.env`, and a `.env` pulled from Vercel points at the same database as the live site. A test registration made there is a real registration: it appears in staff participant lists and CSV exports, takes a real spot, and sends real email through SES. Until Development and Preview have their own database (for example a Neon `dev` branch), don't test on a Vercel preview URL either.
+**Development and Preview use a separate dev database.** It's a schema-only `dev` branch of the production Neon project, so it copies the tables but none of the real registrants, and it has been seeded with the demo events. Vercel's Development and Preview environments point `DATABASE_URL` and `DATABASE_URL_UNPOOLED` at it, and Production keeps its own. Neither environment has email credentials, so nothing is sent from them: locally each email is printed in the terminal, and on a preview deploy it is dropped. Manage links on a preview deploy point at that preview's own URL.
 
-Blank out the database and email settings for the test run. Command-line values take priority over `.env`:
+To test locally against the dev database:
+
+```bash
+vercel link --project delphi
+vercel env pull .env.local --environment=development
+npm run db:migrate && npm run db:seed
+INITIAL_ADMIN_EMAIL=you@tamu.edu npm run db:seed-admin
+npm run dev
+```
+
+The migrate and seed scripts are idempotent, so rerunning them only fills in what's missing. Both the app and the `db:*` scripts let `.env.local` override `.env`, but an old `.env` can still supply a production value that `.env.local` doesn't set, so delete any `.env` pulled from Production. Never pull Production variables into `.env` or `.env.local`: a registration made against the production database is real, appears in staff lists and CSV exports, takes a real spot, and sends real email through SES.
+
+**Preview mode** needs no database at all. Blank out the database and email settings for the run; command-line values take priority over `.env` and `.env.local`:
 
 ```bash
 DATABASE_URL= DATABASE_URL_UNPOOLED= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= \
@@ -36,7 +48,7 @@ DATABASE_URL= DATABASE_URL_UNPOOLED= AWS_ACCESS_KEY_ID= AWS_SECRET_ACCESS_KEY= \
 
 The site then runs on the bundled demo events with everything held in memory; restarting the server resets it. If the events page shows the demo events (such as "Engineering Career Discovery Day"), you are in preview mode. No email is sent: each one is printed in the terminal instead, including its links, so copy the manage link from there.
 
-Staff pages need Google sign-in: keep `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in your `.env`, make sure `http://localhost:3000/api/auth/google/callback` is an authorized redirect URI, and list your Google address in `ADMIN_EMAIL`. Without them you can still test everything students see.
+Staff pages need Google sign-in, and the Google credentials are only set for Production, so add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `AUTH_SECRET` to your `.env.local` by hand and make sure `http://localhost:3000/api/auth/google/callback` is an authorized redirect URI. On the dev database your address must be seeded with `db:seed-admin`; in preview mode it must be listed in `ADMIN_EMAIL`. Without sign-in you can still test everything students see.
 
 ### Registration self-service checklist
 
