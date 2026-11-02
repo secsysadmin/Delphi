@@ -1,10 +1,66 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "@/lib/db";
 import { demoEvents, demoRegistrations } from "@/lib/demo-data";
-import { isQuestion, registrationWindowProblem, slugify } from "@/lib/utils";
+import { isUniqueViolation } from "@/lib/errors";
+import {
+  DEFAULT_ACCENT_COLOR,
+  DEFAULT_CONFIRMATION_BODY,
+  DEFAULT_CONFIRMATION_SUBJECT,
+  SUMMARY_MAX_LENGTH,
+  isHexColor,
+  isQuestion,
+  plural,
+  registrationWindowChanged,
+  registrationWindowProblem,
+  remainingSpots,
+  slugify,
+} from "@/lib/utils";
 import type { EventInput, EventSlot, FormField, Registration, RegistrationEvent } from "@/types";
 
+const STATUSES = ["draft", "published", "archived"] as const;
+const CAPACITY_MODES = ["event", "slot", "unlimited"] as const;
+const QUESTION_TYPES = ["short_text", "long_text", "email", "phone", "number", "select", "multiselect", "radio", "checkbox", "date", "section"] as const;
+const CHOICE_TYPES = new Set(["select", "radio", "multiselect"]);
+const FALLBACK_SLUG = "event";
+const SLUG_SAVE_ATTEMPTS = 3;
+const UIN_PATTERN = /^\d{9}$/;
+export const REGISTRANT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TAMU_EMAIL_SUFFIX = "@tamu.edu";
+const MAX_LENGTH = {
+  title: 160,
+  summary: SUMMARY_MAX_LENGTH,
+  description: 20000,
+  location: 200,
+  slotLabel: 120,
+  fieldLabel: 300,
+  placeholder: 300,
+  helpText: 10000,
+  option: 200,
+  confirmationSubject: 200,
+  confirmationBody: 20000,
+  shortAnswer: 500,
+  longAnswer: 5000,
+  name: 100,
+  email: 254,
+  uin: 20,
+};
+
 type DemoState = { events: RegistrationEvent[]; registrations: Registration[] };
+type Row = Record<string, unknown>;
+type Answer = string | string[] | boolean;
+type CleanSlot = EventInput["slots"][number];
+type RegistrationInput = {
+  slotId?: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
+  uin?: string;
+  answers: Record<string, unknown>;
+};
+type CleanRegistration = Omit<Registration, "id" | "eventId" | "status" | "emailStatus" | "createdAt">;
+type RegistrantInput = Omit<RegistrationInput, "email">;
+type CleanRegistrant = Omit<CleanRegistration, "email">;
+
 const globalDemo = globalThis as unknown as { secDemo?: DemoState };
 const demo = (globalDemo.secDemo ??= {
   events: structuredClone(demoEvents),
@@ -13,8 +69,9 @@ const demo = (globalDemo.secDemo ??= {
 
 const toIso = (value: unknown) => value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString();
 const asNumber = (value: unknown) => value === null || value === undefined ? null : Number(value);
+const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max);
 
-function mapEvent(row: Record<string, unknown>, slots: EventSlot[] = []): RegistrationEvent {
+function mapEvent(row: Row, slots: EventSlot[] = []): RegistrationEvent {
   const registeredCount = Number(row.registeredCount ?? 0);
   const capacity = asNumber(row.capacity);
   return {
@@ -34,20 +91,20 @@ function mapEvent(row: Record<string, unknown>, slots: EventSlot[] = []): Regist
     tamuEmailOnly: Boolean(row.tamuEmailOnly),
     uinRequired: Boolean(row.uinRequired),
     sortOrder: Number(row.sortOrder ?? 0),
-    accentColor: String(row.accentColor ?? "#500000"),
+    accentColor: String(row.accentColor ?? DEFAULT_ACCENT_COLOR),
     formFields: (row.formFields ?? []) as FormField[],
-    confirmationSubject: String(row.confirmationSubject ?? "Registration confirmed: {{event}}"),
-    confirmationBody: String(row.confirmationBody ?? "Howdy {{firstName}}! Your registration for {{event}} is confirmed."),
+    confirmationSubject: String(row.confirmationSubject ?? DEFAULT_CONFIRMATION_SUBJECT),
+    confirmationBody: String(row.confirmationBody ?? DEFAULT_CONFIRMATION_BODY),
     showDateInConfirmation: row.showDateInConfirmation === undefined ? true : Boolean(row.showDateInConfirmation),
     slots,
     registeredCount,
-    remaining: capacity === null || row.capacityMode !== "event" ? null : Math.max(0, capacity - registeredCount),
+    remaining: row.capacityMode === "event" ? remainingSpots(capacity, registeredCount) : null,
     createdAt: toIso(row.createdAt),
     updatedAt: toIso(row.updatedAt),
   };
 }
 
-function mapSlot(row: Record<string, unknown>): EventSlot {
+function mapSlot(row: Row): EventSlot {
   const registeredCount = Number(row.registeredCount ?? 0);
   const capacity = asNumber(row.capacity);
   return {
@@ -61,13 +118,17 @@ function mapSlot(row: Record<string, unknown>): EventSlot {
     confirmationBody: row.confirmationBody ? String(row.confirmationBody) : undefined,
     accentColor: row.accentColor ? String(row.accentColor) : undefined,
     registeredCount,
-    remaining: capacity === null ? null : Math.max(0, capacity - registeredCount),
+    remaining: remainingSpots(capacity, registeredCount),
   };
+}
+
+function mapRegistration(row: Row) {
+  return { ...row, createdAt: toIso(row.createdAt) } as Registration;
 }
 
 async function dbEvents(): Promise<RegistrationEvent[]> {
   if (!sql) return [];
-  const eventRows = await sql<Record<string, unknown>[]>`
+  const eventRows = await sql<Row[]>`
     select e.id, e.slug, e.title, e.summary, e.description, e.location,
       e.start_at as "startAt", e.end_at as "endAt",
       e.registration_open_at as "registrationOpenAt",
@@ -83,7 +144,7 @@ async function dbEvents(): Promise<RegistrationEvent[]> {
     group by e.id
     order by e.sort_order asc, e.start_at asc
   `;
-  const slotRows = await sql<Record<string, unknown>[]>`
+  const slotRows = await sql<Row[]>`
     select s.id, s.event_id as "eventId", s.label, s.start_at as "startAt", s.end_at as "endAt",
       s.location, s.capacity, s.confirmation_subject as "confirmationSubject",
       s.confirmation_body as "confirmationBody", s.accent_color as "accentColor",
@@ -108,13 +169,6 @@ export async function getEvent(idOrSlug: string, includeDrafts = false) {
   return events.find((event) => event.id === idOrSlug || event.slug === idOrSlug) ?? null;
 }
 
-const STATUSES = ["draft", "published", "archived"] as const;
-const CAPACITY_MODES = ["event", "slot", "unlimited"] as const;
-const QUESTION_TYPES = ["short_text", "long_text", "email", "phone", "number", "select", "multiselect", "radio", "checkbox", "date", "section"] as const;
-const CHOICE_TYPES = new Set(["select", "radio", "multiselect"]);
-
-const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max);
-
 function isoDate(value: unknown, label: string) {
   const date = new Date(String(value ?? ""));
   if (!value || Number.isNaN(date.getTime())) throw new Error(`${label} is missing or invalid.`);
@@ -126,8 +180,50 @@ function positiveInteger(value: unknown) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
+function cleanSlots(input: EventInput, capacityMode: EventInput["capacityMode"]): CleanSlot[] {
+  return (input.slots ?? []).map((slot, index) => {
+    const label = text(slot.label, MAX_LENGTH.slotLabel) || `Session ${index + 1}`;
+    const startAt = isoDate(slot.startAt, `${label} start`);
+    const endAt = isoDate(slot.endAt, `${label} end`);
+    if (endAt <= startAt) throw new Error(`${label} must end after it starts.`);
+    return {
+      ...slot,
+      id: slot.id || randomUUID(),
+      label,
+      startAt,
+      endAt,
+      location: text(slot.location, MAX_LENGTH.location),
+      capacity: capacityMode === "slot" ? positiveInteger(slot.capacity) : null,
+      accentColor: isHexColor(slot.accentColor) ? slot.accentColor : undefined,
+    };
+  });
+}
+
+function cleanFormFields(input: EventInput): FormField[] {
+  return (input.formFields ?? []).filter((field) => QUESTION_TYPES.includes(field.type)).map((field, index) => ({
+    ...field,
+    id: field.id || `field-${Date.now()}-${index}`,
+    label: text(field.label, MAX_LENGTH.fieldLabel),
+    helpText: field.helpText ? String(field.helpText).slice(0, MAX_LENGTH.helpText) : undefined,
+    placeholder: field.placeholder ? text(field.placeholder, MAX_LENGTH.placeholder) : undefined,
+    required: isQuestion(field) ? Boolean(field.required) : false,
+    options: CHOICE_TYPES.has(field.type) ? [...new Set((field.options ?? []).map((option) => text(option, MAX_LENGTH.option)).filter(Boolean))] : undefined,
+  }));
+}
+
+function assertPublishable({ startAt, endAt, capacityMode, slots, formFields }: Pick<EventInput, "startAt" | "endAt" | "capacityMode" | "slots" | "formFields">) {
+  const outside = slots.find((slot) => slot.startAt < startAt || slot.endAt > endAt);
+  if (outside) throw new Error(`${outside.label} runs outside the event's start and end time. Change the session or the event times.`);
+  const uncapped = capacityMode === "slot" ? slots.find((slot) => !slot.capacity) : undefined;
+  if (uncapped) throw new Error(`Set a maximum number of registrants for ${uncapped.label}.`);
+  const unlabeled = formFields.find((field) => isQuestion(field) && !field.label);
+  if (unlabeled) throw new Error("Every registration question needs a question title.");
+  const noOptions = formFields.find((field) => CHOICE_TYPES.has(field.type) && !field.options?.length);
+  if (noOptions) throw new Error(`Add at least one option to "${noOptions.label}".`);
+}
+
 function cleanInput(input: EventInput): EventInput {
-  const title = text(input.title, 160);
+  const title = text(input.title, MAX_LENGTH.title);
   if (!title) throw new Error("Event title is required.");
   const startAt = isoDate(input.startAt, "Event start");
   const endAt = isoDate(input.endAt, "Event end");
@@ -140,71 +236,35 @@ function cleanInput(input: EventInput): EventInput {
   const capacity = capacityMode === "event" ? positiveInteger(input.capacity) : null;
   if (capacityMode === "event" && !capacity) throw new Error("Set a valid event capacity.");
   if (capacityMode === "slot" && !(input.slots ?? []).length) throw new Error("Add at least one time slot for slot capacity.");
-  const slots = (input.slots ?? []).map((slot, index) => {
-    const label = text(slot.label, 120) || `Session ${index + 1}`;
-    const slotStart = isoDate(slot.startAt, `${label} start`);
-    const slotEnd = isoDate(slot.endAt, `${label} end`);
-    if (slotEnd <= slotStart) throw new Error(`${label} must end after it starts.`);
-    return {
-      ...slot,
-      id: slot.id || randomUUID(),
-      label,
-      startAt: slotStart,
-      endAt: slotEnd,
-      location: text(slot.location, 200),
-      capacity: capacityMode === "slot" ? positiveInteger(slot.capacity) : null,
-      accentColor: slot.accentColor && /^#[0-9a-f]{6}$/i.test(slot.accentColor) ? slot.accentColor : undefined,
-    };
-  });
-  const formFields = (input.formFields ?? []).filter((field) => QUESTION_TYPES.includes(field.type)).map((field, index) => {
-    const options = CHOICE_TYPES.has(field.type) ? [...new Set((field.options ?? []).map((option) => text(option, 200)).filter(Boolean))] : undefined;
-    return {
-      ...field,
-      id: field.id || `field-${Date.now()}-${index}`,
-      label: text(field.label, 300),
-      helpText: field.helpText ? String(field.helpText).slice(0, 10000) : undefined,
-      placeholder: field.placeholder ? text(field.placeholder, 300) : undefined,
-      required: isQuestion(field) ? Boolean(field.required) : false,
-      options,
-    };
-  });
-  if (status === "published") {
-    const outside = slots.find((slot) => slot.startAt < startAt || slot.endAt > endAt);
-    if (outside) throw new Error(`${outside.label} runs outside the event's start and end time. Change the session or the event times.`);
-    const uncapped = capacityMode === "slot" ? slots.find((slot) => !slot.capacity) : undefined;
-    if (uncapped) throw new Error(`Set a maximum number of registrants for ${uncapped.label}.`);
-    const unlabeled = formFields.find((field) => isQuestion(field) && !field.label);
-    if (unlabeled) throw new Error("Every registration question needs a question title.");
-    const noOptions = formFields.find((field) => CHOICE_TYPES.has(field.type) && !field.options?.length);
-    if (noOptions) throw new Error(`Add at least one option to "${noOptions.label}".`);
-  }
+  const slots = cleanSlots(input, capacityMode);
+  const formFields = cleanFormFields(input);
+  if (status === "published") assertPublishable({ startAt, endAt, capacityMode, slots, formFields });
   return {
     ...input,
     title,
-    slug: slugify(input.slug || title) || "event",
+    slug: slugify(input.slug || title) || FALLBACK_SLUG,
     status,
     startAt,
     endAt,
     registrationOpenAt,
     registrationCloseAt,
-    summary: text(input.summary, 180),
-    description: text(input.description, 20000),
-    location: text(input.location, 200),
-    accentColor: /^#[0-9a-f]{6}$/i.test(input.accentColor) ? input.accentColor : "#500000",
+    summary: text(input.summary, MAX_LENGTH.summary),
+    description: text(input.description, MAX_LENGTH.description),
+    location: text(input.location, MAX_LENGTH.location),
+    accentColor: isHexColor(input.accentColor) ? input.accentColor : DEFAULT_ACCENT_COLOR,
     capacityMode,
     capacity,
     tamuEmailOnly: Boolean(input.tamuEmailOnly),
     uinRequired: Boolean(input.uinRequired),
     showDateInConfirmation: input.showDateInConfirmation !== false,
     sortOrder: Number(input.sortOrder) || 0,
-    confirmationSubject: text(input.confirmationSubject, 200) || "Registration confirmed: {{event}}",
-    confirmationBody: String(input.confirmationBody ?? "").slice(0, 20000) || "Howdy {{firstName}}! Your registration for {{event}} is confirmed.",
+    confirmationSubject: text(input.confirmationSubject, MAX_LENGTH.confirmationSubject) || DEFAULT_CONFIRMATION_SUBJECT,
+    confirmationBody: String(input.confirmationBody ?? "").slice(0, MAX_LENGTH.confirmationBody) || DEFAULT_CONFIRMATION_BODY,
     formFields,
     slots,
   };
 }
 
-// Event URLs must be unique; a repeated title gets "-2", "-3", ...
 async function uniqueSlug(slug: string, eventId: string) {
   const taken = new Set(sql
     ? (await sql<{ slug: string }[]>`select slug from sec_registration.events where id != ${eventId} and (slug = ${slug} or slug like ${`${slug}-%`})`).map((row) => row.slug)
@@ -213,57 +273,63 @@ async function uniqueSlug(slug: string, eventId: string) {
   for (let n = 2; ; n++) if (!taken.has(`${slug}-${n}`)) return `${slug}-${n}`;
 }
 
-// A unique-slug race: another save claimed this URL between uniqueSlug() and the insert.
-const isSlugConflict = (error: unknown) =>
-  typeof error === "object" && error !== null && (error as { code?: string }).code === "23505" &&
-  String((error as { constraint_name?: string }).constraint_name ?? "").includes("slug");
+function assertNoOrphanedSlots(current: RegistrationEvent | null, slots: CleanSlot[]) {
+  const orphaned = current?.slots.find((slot) => slot.registeredCount > 0 && !slots.some((item) => item.id === slot.id));
+  if (orphaned) throw new Error(`${orphaned.label} has ${plural(orphaned.registeredCount, "registrant")}, so it can't be deleted. Change its time or room instead, or remove those registrants first.`);
+}
+
+function assertOpenRegistrationWindow(current: RegistrationEvent | null, next: EventInput) {
+  if (next.status !== "published" || !registrationWindowChanged(current, next)) return;
+  const problem = registrationWindowProblem(next);
+  if (problem) throw new Error(problem);
+}
+
+function saveDemoEvent(eventId: string, input: EventInput) {
+  const current = demo.events.find((item) => item.id === eventId);
+  const timestamp = new Date().toISOString();
+  const slots = input.slots.map((slot) => {
+    const count = current?.slots.find((item) => item.id === slot.id)?.registeredCount ?? 0;
+    return { ...slot, registeredCount: count, remaining: remainingSpots(slot.capacity, count) };
+  });
+  const registeredCount = current?.registeredCount ?? 0;
+  const next: RegistrationEvent = {
+    ...input,
+    id: eventId,
+    slots,
+    registeredCount,
+    remaining: input.capacityMode === "event" ? remainingSpots(input.capacity, registeredCount) : null,
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+  if (current) Object.assign(current, next);
+  else demo.events.push(next);
+  return next;
+}
+
+async function writeEventWithUniqueSlug({ eventId, input, baseSlug }: { eventId: string; input: EventInput; baseSlug: string }) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await writeEvent(eventId, input);
+      return;
+    } catch (error) {
+      if (attempt >= SLUG_SAVE_ATTEMPTS || !isUniqueViolation(error, "slug")) throw error;
+      input.slug = await uniqueSlug(baseSlug, eventId);
+    }
+  }
+}
 
 export async function saveEvent(rawInput: EventInput, id?: string) {
   const eventId = id || randomUUID();
   const cleaned = cleanInput(rawInput);
   const current = id ? await getEvent(id, true) : null;
-  const orphaned = current?.slots.find((slot) => slot.registeredCount > 0 && !cleaned.slots.some((item) => item.id === slot.id));
-  if (orphaned) throw new Error(`${orphaned.label} has ${orphaned.registeredCount} registrant${orphaned.registeredCount === 1 ? "" : "s"}, so it can't be deleted. Change its time or room instead, or remove those registrants first.`);
-  // Publishing checks the registration window, but only when it's new or has changed,
-  // so editing an event whose registration already closed never gets stuck on it.
-  if (cleaned.status === "published") {
-    const changed = !current || current.status !== "published" || current.registrationCloseAt !== cleaned.registrationCloseAt || current.endAt !== cleaned.endAt;
-    const problem = changed && registrationWindowProblem(cleaned);
-    if (problem) throw new Error(problem);
-  }
+  assertNoOrphanedSlots(current, cleaned.slots);
+  assertOpenRegistrationWindow(current, cleaned);
   const input = { ...cleaned, slug: await uniqueSlug(cleaned.slug, eventId) };
-  const timestamp = new Date().toISOString();
-  if (!sql) {
-    const current = demo.events.find((item) => item.id === eventId);
-    const slots = input.slots.map((slot) => {
-      const existing = current?.slots.find((item) => item.id === slot.id);
-      const count = existing?.registeredCount ?? 0;
-      return { ...slot, registeredCount: count, remaining: slot.capacity === null ? null : Math.max(0, slot.capacity - count) };
-    });
-    const next: RegistrationEvent = {
-      ...input,
-      id: eventId,
-      slots,
-      registeredCount: current?.registeredCount ?? 0,
-      remaining: input.capacityMode === "event" && input.capacity !== null ? Math.max(0, input.capacity - (current?.registeredCount ?? 0)) : null,
-      createdAt: current?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-    };
-    if (current) Object.assign(current, next);
-    else demo.events.push(next);
-    return next;
-  }
-
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await writeEvent(eventId, input);
-      break;
-    } catch (error) {
-      if (attempt >= 3 || !isSlugConflict(error)) throw error;
-      input.slug = await uniqueSlug(cleaned.slug, eventId);
-    }
-  }
-  return (await getEvent(eventId, true))!;
+  if (!sql) return saveDemoEvent(eventId, input);
+  await writeEventWithUniqueSlug({ eventId, input, baseSlug: cleaned.slug });
+  const saved = await getEvent(eventId, true);
+  if (!saved) throw new Error("The event was saved but could not be reloaded. Refresh the dashboard.");
+  return saved;
 }
 
 async function writeEvent(eventId: string, input: EventInput) {
@@ -334,19 +400,19 @@ export async function reorderEvents(ids: string[]) {
 
 export async function getRegistrations(eventId: string) {
   if (!sql) return demo.registrations.filter((registration) => registration.eventId === eventId);
-  const rows = await sql<Record<string, unknown>[]>`
+  const rows = await sql<Row[]>`
     select id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
       last_name as "lastName", email, uin, answers, status, email_status as "emailStatus",
       created_at as "createdAt" from sec_registration.registrations where event_id = ${eventId} order by created_at desc
   `;
-  return rows.map((row) => ({ ...row, createdAt: toIso(row.createdAt) })) as Registration[];
+  return rows.map(mapRegistration);
 }
 
 export async function getRegistration(eventId: string, registrationId: string) {
   return (await getRegistrations(eventId)).find((registration) => registration.id === registrationId) ?? null;
 }
 
-export async function logEmail(eventId: string, recipientCount: number, subject: string, status: string) {
+export async function logEmail({ eventId, recipientCount, subject, status }: { eventId: string; recipientCount: number; subject: string; status: string }) {
   if (!sql) return;
   await sql`insert into sec_registration.email_logs (event_id, recipient_count, subject, status) values (${eventId}, ${recipientCount}, ${subject}, ${status})`;
 }
@@ -365,57 +431,56 @@ export function previewEvent(rawInput: EventInput): RegistrationEvent {
   };
 }
 
+function releaseSpot(holder: { registeredCount: number; remaining: number | null } | undefined) {
+  if (!holder) return;
+  holder.registeredCount = Math.max(0, holder.registeredCount - 1);
+  if (holder.remaining !== null) holder.remaining += 1;
+}
+
+function claimSpot(holder: { registeredCount: number; remaining: number | null }) {
+  holder.registeredCount++;
+  if (holder.remaining !== null) holder.remaining = Math.max(0, holder.remaining - 1);
+}
+
+function deleteDemoRegistration(eventId: string, registrationId: string) {
+  const index = demo.registrations.findIndex((registration) => registration.id === registrationId && registration.eventId === eventId);
+  if (index < 0) return false;
+  const [registration] = demo.registrations.splice(index, 1);
+  if (registration.status === "cancelled") return true;
+  const event = demo.events.find((item) => item.id === eventId);
+  releaseSpot(event);
+  releaseSpot(event?.slots.find((item) => item.id === registration.slotId));
+  return true;
+}
+
 export async function deleteRegistration(eventId: string, registrationId: string) {
-  if (!sql) {
-    const index = demo.registrations.findIndex((registration) => registration.id === registrationId && registration.eventId === eventId);
-    if (index < 0) return false;
-    const [registration] = demo.registrations.splice(index, 1);
-    const event = demo.events.find((item) => item.id === eventId);
-    const slot = event?.slots.find((item) => item.id === registration.slotId);
-    if (event && registration.status !== "cancelled") {
-      event.registeredCount = Math.max(0, event.registeredCount - 1);
-      if (event.remaining !== null) event.remaining += 1;
-    }
-    if (slot && registration.status !== "cancelled") {
-      slot.registeredCount = Math.max(0, slot.registeredCount - 1);
-      if (slot.remaining !== null) slot.remaining += 1;
-    }
-    return true;
-  }
+  if (!sql) return deleteDemoRegistration(eventId, registrationId);
   const deleted = await sql`delete from sec_registration.registrations where id = ${registrationId} and event_id = ${eventId} returning id`;
   return deleted.length > 0;
 }
 
+
 export class DuplicateRegistrationError extends Error {
-  constructor() { super("This email is already registered for the event."); }
+  constructor() {
+    super("This email is already registered for the event.");
+  }
 }
 
-type RegistrationInput = {
-  slotId?: string | null;
-  firstName: string;
-  lastName: string;
-  email: string;
-  uin?: string;
-  answers: Record<string, unknown>;
-};
+function cleanAnswer(field: FormField, value: unknown): Answer | undefined {
+  const options = (field.options ?? []).map((option) => String(option).trim());
+  if (field.type === "checkbox") return value === true;
+  if (field.type === "multiselect") return Array.isArray(value) ? value.map((item) => String(item).trim()).filter((item) => options.includes(item)) : [];
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const answer = value.trim().slice(0, field.type === "long_text" ? MAX_LENGTH.longAnswer : MAX_LENGTH.shortAnswer);
+  if ((field.type === "select" || field.type === "radio") && !options.includes(answer)) throw new Error(`Choose one of the options for ${field.label}.`);
+  return answer;
+}
 
-type Answer = string | string[] | boolean;
-
-// Keep only answers to this event's questions, in the shape each question type expects.
 function cleanAnswers(fields: FormField[], raw: unknown) {
-  const source = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const source = raw && typeof raw === "object" ? raw as Row : {};
   const answers: Record<string, Answer> = {};
   for (const field of fields.filter(isQuestion)) {
-    const value = source[field.id];
-    // Compare trimmed, since older events may have saved options with stray spaces.
-    const options = (field.options ?? []).map((option) => String(option).trim());
-    let answer: Answer | undefined;
-    if (field.type === "checkbox") answer = value === true;
-    else if (field.type === "multiselect") answer = Array.isArray(value) ? value.map((item) => String(item).trim()).filter((item) => options.includes(item)) : [];
-    else if (typeof value === "string" && value.trim()) {
-      answer = value.trim().slice(0, field.type === "long_text" ? 5000 : 500);
-      if ((field.type === "select" || field.type === "radio") && !options.includes(answer)) throw new Error(`Choose one of the options for ${field.label}.`);
-    }
+    const answer = cleanAnswer(field, source[field.id]);
     const empty = answer === undefined || answer === false || (Array.isArray(answer) && !answer.length);
     if (field.required && empty) throw new Error(`${field.label} is required.`);
     if (answer !== undefined) answers[field.id] = answer;
@@ -423,60 +488,72 @@ function cleanAnswers(fields: FormField[], raw: unknown) {
   return answers;
 }
 
-// The fields a registrant controls, other than email, checked against the event's rules.
-function cleanRegistrant(event: RegistrationEvent, rawInput: Omit<RegistrationInput, "email">) {
+function assertRegistrationOpen(event: RegistrationEvent) {
+  const now = Date.now();
+  if (new Date(event.registrationOpenAt).getTime() > now) throw new Error("Registration has not opened yet.");
+  if (new Date(event.registrationCloseAt).getTime() < now) throw new Error("Registration is closed.");
+}
+
+function cleanRegistrantEmail(event: RegistrationEvent, rawEmail: unknown) {
+  const email = text(rawEmail, MAX_LENGTH.email).toLowerCase();
+  if (!REGISTRANT_EMAIL_PATTERN.test(email)) throw new Error("Enter a valid email address.");
+  if (event.tamuEmailOnly && !email.endsWith(TAMU_EMAIL_SUFFIX)) throw new Error("This event is only open to @tamu.edu email addresses.");
+  return email;
+}
+
+function cleanRegistrant(event: RegistrationEvent, rawInput: RegistrantInput): CleanRegistrant {
   const input = {
     slotId: rawInput.slotId ? String(rawInput.slotId) : null,
-    firstName: text(rawInput.firstName, 100),
-    lastName: text(rawInput.lastName, 100),
-    uin: text(rawInput.uin, 20),
+    firstName: text(rawInput.firstName, MAX_LENGTH.name),
+    lastName: text(rawInput.lastName, MAX_LENGTH.name),
+    uin: text(rawInput.uin, MAX_LENGTH.uin),
     answers: cleanAnswers(event.formFields, rawInput.answers),
   };
   if (!input.firstName || !input.lastName) throw new Error("First and last name are required.");
-  if (input.uin && !/^\d{9}$/.test(input.uin)) throw new Error("Enter your 9-digit UIN.");
+  if (input.uin && !UIN_PATTERN.test(input.uin)) throw new Error("Enter your 9-digit UIN.");
   if (event.uinRequired && !input.uin) throw new Error("UIN is required.");
   const slot = input.slotId ? event.slots.find((item) => item.id === input.slotId) : null;
   if (event.slots.length && !slot) throw new Error("Select a time slot.");
-  return { input, slot };
+  return { ...input, slotId: slot?.id ?? null };
+}
+
+function cleanRegistration(event: RegistrationEvent, rawInput: RegistrationInput): CleanRegistration {
+  const email = cleanRegistrantEmail(event, rawInput.email);
+  return { ...cleanRegistrant(event, rawInput), email };
+}
+
+function findActiveDemoRegistration(eventId: string, email: string) {
+  return demo.registrations.find((item) => item.eventId === eventId && item.email.toLowerCase() === email && item.status !== "cancelled") ?? null;
+}
+
+function findDemoRegistration(registrationId: string) {
+  const registration = demo.registrations.find((item) => item.id === registrationId);
+  if (!registration) throw new Error("Registration not found.");
+  return registration;
+}
+
+function createDemoRegistration({ id, event, slot, input }: { id: string; event: RegistrationEvent; slot: EventSlot | null; input: CleanRegistration }) {
+  if (findActiveDemoRegistration(event.id, input.email)) throw new DuplicateRegistrationError();
+  if (event.capacityMode === "event" && event.remaining !== null && event.remaining <= 0) throw new Error("This event is full.");
+  if (event.capacityMode === "slot" && slot && slot.remaining !== null && slot.remaining <= 0) throw new Error("This time slot is full.");
+  const registration: Registration = { ...input, id, eventId: event.id, status: "confirmed", emailStatus: "pending", createdAt: new Date().toISOString() };
+  demo.registrations.push(registration);
+  claimSpot(event);
+  if (slot) claimSpot(slot);
+  return { registration, event, slot };
 }
 
 export async function createRegistration(eventId: string, rawInput: RegistrationInput) {
   const event = await getEvent(eventId);
   if (!event) throw new Error("Event not found.");
-  const now = Date.now();
-  if (new Date(event.registrationOpenAt).getTime() > now) throw new Error("Registration has not opened yet.");
-  if (new Date(event.registrationCloseAt).getTime() < now) throw new Error("Registration is closed.");
-  const email = text(rawInput.email, 254).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
-  if (event.tamuEmailOnly && !email.endsWith("@tamu.edu")) {
-    throw new Error("This event is only open to @tamu.edu email addresses.");
-  }
-  const { input: registrant, slot } = cleanRegistrant(event, rawInput);
-  const input = { ...registrant, email };
+  assertRegistrationOpen(event);
+  const input = cleanRegistration(event, rawInput);
+  const slot = event.slots.find((item) => item.id === input.slotId) ?? null;
   const id = randomUUID();
-  if (!sql) {
-    if (demo.registrations.some((item) => item.eventId === eventId && item.email.toLowerCase() === input.email && item.status !== "cancelled")) {
-      throw new DuplicateRegistrationError();
-    }
-    if (event.capacityMode === "event" && event.remaining !== null && event.remaining <= 0) throw new Error("This event is full.");
-    if (event.capacityMode === "slot" && slot?.remaining !== null && slot?.remaining !== undefined && slot.remaining <= 0) throw new Error("This time slot is full.");
-    const registration: Registration = {
-      id, eventId, slotId: slot?.id ?? null, firstName: input.firstName, lastName: input.lastName,
-      email: input.email, uin: input.uin, answers: input.answers,
-      status: "confirmed", emailStatus: "pending", createdAt: new Date().toISOString(),
-    };
-    demo.registrations.push(registration);
-    event.registeredCount++;
-    if (event.remaining !== null) event.remaining = Math.max(0, event.remaining - 1);
-    if (slot) {
-      slot.registeredCount++;
-      if (slot.remaining !== null) slot.remaining = Math.max(0, slot.remaining - 1);
-    }
-    return { registration, event, slot };
-  }
+  if (!sql) return createDemoRegistration({ id, event, slot, input });
 
   return sql.begin(async (tx) => {
-    const lockedEvents = await tx<Record<string, unknown>[]>`select id, capacity_mode as "capacityMode", capacity from sec_registration.events where id = ${eventId} for update`;
+    const lockedEvents = await tx<Row[]>`select id, capacity_mode as "capacityMode", capacity from sec_registration.events where id = ${eventId} for update`;
     if (!lockedEvents.length) throw new Error("Event not found.");
     const duplicate = await tx`select id from sec_registration.registrations where event_id = ${eventId} and lower(email) = lower(${input.email}) and status != 'cancelled' limit 1`;
     if (duplicate.length) throw new DuplicateRegistrationError();
@@ -484,22 +561,22 @@ export async function createRegistration(eventId: string, rawInput: Registration
       const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from sec_registration.registrations where event_id = ${eventId} and status != 'cancelled'`;
       if (count >= Number(lockedEvents[0].capacity)) throw new Error("This event is full.");
     }
-    if (slot?.id) {
-      const slots = await tx<Record<string, unknown>[]>`select id, capacity from sec_registration.event_slots where id = ${slot.id} and event_id = ${eventId} for update`;
+    if (slot) {
+      const slots = await tx<Row[]>`select id, capacity from sec_registration.event_slots where id = ${slot.id} and event_id = ${eventId} for update`;
       if (!slots.length) throw new Error("Time slot not found.");
       if (slots[0].capacity) {
         const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from sec_registration.registrations where slot_id = ${slot.id} and status != 'cancelled'`;
         if (count >= Number(slots[0].capacity)) throw new Error("This time slot is full.");
       }
     }
-    const rows = await tx<Record<string, unknown>[]>`
+    const rows = await tx<Row[]>`
       insert into sec_registration.registrations (id, event_id, slot_id, first_name, last_name, email, uin, answers)
       values (${id}, ${eventId}, ${slot?.id ?? null}, ${input.firstName}, ${input.lastName},
         ${input.email}, ${input.uin}, ${tx.json(input.answers as never)})
       returning id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
         last_name as "lastName", email, uin, answers, status, email_status as "emailStatus", created_at as "createdAt"
     `;
-    return { registration: { ...rows[0], createdAt: toIso(rows[0].createdAt) } as Registration, event, slot };
+    return { registration: mapRegistration(rows[0]), event, slot };
   });
 }
 
@@ -512,127 +589,117 @@ export async function updateEmailStatus(registrationId: string, status: string) 
   await sql`update sec_registration.registrations set email_status = ${status} where id = ${registrationId}`;
 }
 
-const registrationFromRow = (row: Record<string, unknown>) => ({ ...row, createdAt: toIso(row.createdAt) }) as Registration;
-
 export async function findRegistration(registrationId: string) {
   if (!sql) return demo.registrations.find((item) => item.id === registrationId) ?? null;
-  const rows = await sql<Record<string, unknown>[]>`
+  const rows = await sql<Row[]>`
     select id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
       last_name as "lastName", email, uin, answers, status, email_status as "emailStatus",
       created_at as "createdAt" from sec_registration.registrations where id = ${registrationId}
   `;
-  return rows.length ? registrationFromRow(rows[0]) : null;
+  return rows.length ? mapRegistration(rows[0]) : null;
 }
 
 export async function findActiveRegistrationByEmail(eventId: string, email: string) {
   const normalized = email.trim().toLowerCase();
-  if (!sql) return demo.registrations.find((item) => item.eventId === eventId && item.email.toLowerCase() === normalized && item.status !== "cancelled") ?? null;
-  const rows = await sql<Record<string, unknown>[]>`
+  if (!sql) return findActiveDemoRegistration(eventId, normalized);
+  const rows = await sql<Row[]>`
     select id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
       last_name as "lastName", email, uin, answers, status, email_status as "emailStatus",
       created_at as "createdAt" from sec_registration.registrations
     where event_id = ${eventId} and lower(email) = ${normalized} and status != 'cancelled' limit 1
   `;
-  return rows.length ? registrationFromRow(rows[0]) : null;
+  return rows.length ? mapRegistration(rows[0]) : null;
 }
 
-// Preview mode keeps capacity counts on the event objects themselves.
-function adjustDemoCounts(eventId: string, slotId: string | null, delta: number) {
-  const event = demo.events.find((item) => item.id === eventId);
-  if (!event) return;
-  event.registeredCount = Math.max(0, event.registeredCount + delta);
-  if (event.remaining !== null) event.remaining = Math.max(0, event.remaining - delta);
-  const slot = event.slots.find((item) => item.id === slotId);
-  if (slot) {
-    slot.registeredCount = Math.max(0, slot.registeredCount + delta);
-    if (slot.remaining !== null) slot.remaining = Math.max(0, slot.remaining - delta);
+function moveDemoSpot(event: RegistrationEvent, { from, to }: { from: string | null; to: string | null }) {
+  releaseSpot(event.slots.find((item) => item.id === from));
+  const target = event.slots.find((item) => item.id === to);
+  if (target) claimSpot(target);
+}
+
+function updateDemoRegistration({ registration, event, input, slotChanged }: { registration: Registration; event: RegistrationEvent; input: CleanRegistrant; slotChanged: boolean }) {
+  const target = findDemoRegistration(registration.id);
+  if (slotChanged) {
+    const slot = event.slots.find((item) => item.id === input.slotId);
+    if (slot?.remaining === 0) throw new Error("This time slot is full.");
+    moveDemoSpot(event, { from: target.slotId, to: input.slotId });
   }
+  Object.assign(target, input);
+  return target;
 }
 
-// Registrants can change their details until registration closes. Their email stays fixed,
-// since it's where the manage link was sent; using another address means registering again.
-export async function updateRegistration(registration: Registration, rawInput: Omit<RegistrationInput, "email">) {
+export async function updateRegistration(registration: Registration, rawInput: RegistrantInput) {
   if (registration.status === "cancelled") throw new Error("This registration was withdrawn. Register again from the event page.");
   const event = await getEvent(registration.eventId);
   if (!event) throw new Error("This event is no longer available.");
   if (new Date(event.registrationCloseAt).getTime() < Date.now()) throw new Error("Registration has closed, so changes are locked.");
-  const { input, slot } = cleanRegistrant(event, rawInput);
-  const slotId = slot?.id ?? null;
-  const slotChanged = slotId !== registration.slotId;
-  if (!sql) {
-    if (slotChanged && slot?.remaining === 0) throw new Error("This time slot is full.");
-    const target = demo.registrations.find((item) => item.id === registration.id)!;
-    if (slotChanged) {
-      adjustDemoCounts(event.id, target.slotId, -1);
-      adjustDemoCounts(event.id, slotId, 1);
-    }
-    Object.assign(target, { ...input, slotId });
-    return { registration: target, event, slot, slotChanged };
-  }
+  const input = cleanRegistrant(event, rawInput);
+  const slot = event.slots.find((item) => item.id === input.slotId) ?? null;
+  const slotChanged = input.slotId !== registration.slotId;
+  if (!sql) return { registration: updateDemoRegistration({ registration, event, input, slotChanged }), event, slot, slotChanged };
 
   return sql.begin(async (tx) => {
-    if (slotChanged && slotId) {
-      const slots = await tx<Record<string, unknown>[]>`select id, capacity from sec_registration.event_slots where id = ${slotId} and event_id = ${event.id} for update`;
+    if (slotChanged && slot) {
+      const slots = await tx<Row[]>`select id, capacity from sec_registration.event_slots where id = ${slot.id} and event_id = ${event.id} for update`;
       if (!slots.length) throw new Error("Time slot not found.");
       if (slots[0].capacity) {
-        const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from sec_registration.registrations where slot_id = ${slotId} and status != 'cancelled' and id != ${registration.id}`;
+        const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from sec_registration.registrations where slot_id = ${slot.id} and status != 'cancelled' and id != ${registration.id}`;
         if (count >= Number(slots[0].capacity)) throw new Error("This time slot is full.");
       }
     }
-    const rows = await tx<Record<string, unknown>[]>`
-      update sec_registration.registrations set slot_id = ${slotId}, first_name = ${input.firstName},
+    const rows = await tx<Row[]>`
+      update sec_registration.registrations set slot_id = ${input.slotId}, first_name = ${input.firstName},
         last_name = ${input.lastName}, uin = ${input.uin}, answers = ${tx.json(input.answers as never)}
       where id = ${registration.id} and status != 'cancelled'
       returning id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
         last_name as "lastName", email, uin, answers, status, email_status as "emailStatus", created_at as "createdAt"
     `;
     if (!rows.length) throw new Error("This registration was withdrawn. Register again from the event page.");
-    return { registration: registrationFromRow(rows[0]), event, slot, slotChanged };
+    return { registration: mapRegistration(rows[0]), event, slot, slotChanged };
   });
 }
 
-// Withdrawing frees the spot and stays open until the event starts, even after registration closes.
-// Returns whether this call did the withdrawing, so a repeated click doesn't send a second email.
+function withdrawDemoRegistration(registrationId: string, event: RegistrationEvent) {
+  const target = findDemoRegistration(registrationId);
+  target.status = "cancelled";
+  releaseSpot(event);
+  releaseSpot(event.slots.find((item) => item.id === target.slotId));
+}
+
 export async function withdrawRegistration(registration: Registration) {
   const event = await getEvent(registration.eventId, true);
   if (!event) throw new Error("This event is no longer available.");
-  const slot = event.slots.find((item) => item.id === registration.slotId) ?? null;
-  if (registration.status === "cancelled") return { withdrawn: false, event, slot };
+  if (registration.status === "cancelled") return { withdrawn: false, event };
   if (new Date(event.startAt).getTime() < Date.now()) throw new Error("This event has already started, so it's too late to withdraw.");
   if (!sql) {
-    const target = demo.registrations.find((item) => item.id === registration.id)!;
-    target.status = "cancelled";
-    adjustDemoCounts(event.id, target.slotId, -1);
-    return { withdrawn: true, event, slot };
+    withdrawDemoRegistration(registration.id, event);
+    return { withdrawn: true, event };
   }
   const rows = await sql`update sec_registration.registrations set status = 'cancelled' where id = ${registration.id} and status != 'cancelled' returning id`;
-  return { withdrawn: rows.length > 0, event, slot };
+  return { withdrawn: rows.length > 0, event };
 }
 
-// Staff correct a mistyped address. The manage link is only ever sent to the stored email,
-// so this is the one way a registrant's email changes without registering again.
 export async function updateRegistrationEmail(eventId: string, registrationId: string, rawEmail: unknown) {
   const event = await getEvent(eventId, true);
   const registration = event && await getRegistration(eventId, registrationId);
   if (!event || !registration) throw new Error("Participant not found.");
   if (registration.status === "cancelled") throw new Error(`${registration.firstName} withdrew, so their email can't be changed.`);
-  const email = text(rawEmail, 254).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
-  if (event.tamuEmailOnly && !email.endsWith("@tamu.edu")) throw new Error("This event is only open to @tamu.edu email addresses.");
+  const email = cleanRegistrantEmail(event, rawEmail);
   if (email === registration.email.toLowerCase()) throw new Error("That's already their email address.");
   if (!sql) {
-    if (demo.registrations.some((item) => item.eventId === eventId && item.email.toLowerCase() === email && item.status !== "cancelled")) throw new DuplicateRegistrationError();
-    const target = demo.registrations.find((item) => item.id === registrationId)!;
+    if (findActiveDemoRegistration(eventId, email)) throw new DuplicateRegistrationError();
+    const target = findDemoRegistration(registrationId);
     target.email = email;
     return { registration: target, event };
   }
   const duplicate = await sql`select id from sec_registration.registrations where event_id = ${eventId} and lower(email) = ${email} and status != 'cancelled' limit 1`;
   if (duplicate.length) throw new DuplicateRegistrationError();
-  const rows = await sql<Record<string, unknown>[]>`
+  const rows = await sql<Row[]>`
     update sec_registration.registrations set email = ${email}, email_status = 'pending'
-    where id = ${registrationId} and event_id = ${eventId}
+    where id = ${registrationId} and event_id = ${eventId} and status != 'cancelled'
     returning id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
       last_name as "lastName", email, uin, answers, status, email_status as "emailStatus", created_at as "createdAt"
   `;
-  return { registration: registrationFromRow(rows[0]), event };
+  if (!rows.length) throw new Error("This participant was removed or withdrew. Refresh the list and try again.");
+  return { registration: mapRegistration(rows[0]), event };
 }

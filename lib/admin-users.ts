@@ -1,5 +1,8 @@
 import { sql } from "@/lib/db";
 
+const ADMIN_EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+const NO_DATABASE_MESSAGE = "A database connection is required to manage administrators.";
+
 type AdminUserRow = {
   id: string;
   email: string;
@@ -8,7 +11,7 @@ type AdminUserRow = {
 
 export type AdminUser = Omit<AdminUserRow, "createdAt"> & { createdAt: string };
 
-function normalizeEmail(email: string) {
+export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
@@ -38,9 +41,9 @@ export async function listAdminUsers(): Promise<AdminUser[]> {
 }
 
 export async function createAdminUser(email: string) {
-  if (!sql) throw new Error("A database connection is required to manage administrators.");
+  if (!sql) throw new Error(NO_DATABASE_MESSAGE);
   const normalizedEmail = normalizeEmail(email);
-  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("Enter a valid administrator email address.");
+  if (!ADMIN_EMAIL_PATTERN.test(normalizedEmail)) throw new Error("Enter a valid administrator email address.");
   const existing = await getAdminUserByEmail(normalizedEmail);
   if (existing) throw new Error("An administrator with that email already exists.");
   const [user] = await sql<AdminUserRow[]>`
@@ -52,7 +55,7 @@ export async function createAdminUser(email: string) {
 }
 
 export async function deleteAdminUser(id: string, currentEmail: string) {
-  if (!sql) throw new Error("A database connection is required to manage administrators.");
+  if (!sql) throw new Error(NO_DATABASE_MESSAGE);
   const [target] = await sql<AdminUserRow[]>`
     select id, email, created_at as "createdAt"
     from sec_registration.admin_users

@@ -4,9 +4,13 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import type { AdminUser } from "@/lib/admin-users";
+import { jsonRequest, sendJson } from "@/lib/api-client";
+import { plural } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
-export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers: AdminUser[]; currentEmail: string }) {
+type AdminUserManagerProps = { initialUsers: AdminUser[]; currentEmail: string };
+
+export function AdminUserManager({ initialUsers, currentEmail }: AdminUserManagerProps) {
   const [users, setUsers] = useState(initialUsers);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -19,15 +23,11 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
     const form = event.currentTarget;
     const fields = new FormData(form);
     setSaving(true); setMessage(""); setError("");
-    const response = await fetch("/api/admin/users", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: fields.get("email") }),
-    });
-    const data = await response.json();
+    const { ok, data, error: failure } = await sendJson<{ user: AdminUser }>("/api/admin/users", jsonRequest("POST", { email: fields.get("email") }));
     setSaving(false);
-    if (!response.ok) { setError(data.error || "Unable to add administrator."); return; }
-    setUsers((existing) => [...existing, data.user]);
+    if (!ok || !data.user) { setError(failure || "Unable to add administrator."); return; }
+    const added = data.user;
+    setUsers((existing) => [...existing, added]);
     form.reset();
     setMessage("Administrator added. They can sign in with Google using that email address.");
   }
@@ -35,10 +35,9 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
   async function removeUser(user: AdminUser) {
     setPendingRemoval(null);
     setDeletingId(user.id); setMessage(""); setError("");
-    const response = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
-    const data = await response.json();
+    const { ok, error: failure } = await sendJson<{ ok: boolean }>(`/api/admin/users/${user.id}`, { method: "DELETE" });
     setDeletingId(null);
-    if (!response.ok) { setError(data.error || "Unable to remove administrator."); return; }
+    if (!ok) { setError(failure || "Unable to remove administrator."); return; }
     setUsers((existing) => existing.filter((candidate) => candidate.id !== user.id));
     setMessage("Administrator removed.");
   }
@@ -50,7 +49,7 @@ export function AdminUserManager({ initialUsers, currentEmail }: { initialUsers:
     </div>
     <div className="admin-users-layout">
       <section className="admin-panel admin-user-list" aria-labelledby="admin-list-heading">
-        <div className="admin-user-list__head"><h2 id="admin-list-heading">Administrator accounts</h2><span>{users.length} {users.length === 1 ? "account" : "accounts"}</span></div>
+        <div className="admin-user-list__head"><h2 id="admin-list-heading">Administrator accounts</h2><span>{plural(users.length, "account")}</span></div>
         {users.length ? <ul>{users.map((user) => {
           const isCurrentUser = user.email === currentEmail.toLowerCase();
           return <li key={user.id}><div><strong>{user.email}</strong><small>{isCurrentUser ? "Current account" : "Administrator access"}</small></div><button className="registration-delete" type="button" onClick={() => setPendingRemoval(user)} disabled={isCurrentUser || deletingId === user.id} title={isCurrentUser ? "You cannot remove the account currently signed in" : `Remove ${user.email}`} aria-label={`Remove ${user.email}`}><Trash2 size={16} /></button></li>;

@@ -1,12 +1,7 @@
 import { EventDirectory } from "@/components/event-directory";
+import { centralWall } from "@/lib/utils";
 
 export default async function HomePage() {
-  const monthParts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "numeric" })
-      .formatToParts(new Date())
-      .filter(({ type }) => type !== "literal")
-      .map(({ type, value }) => [type, value]),
-  );
-
-  return <EventDirectory calendarStart={{ year: Number(monthParts.year), month: Number(monthParts.month) }} />;
+  const { year, month } = centralWall(new Date());
+  return <EventDirectory calendarStart={{ year, month }} />;
 }

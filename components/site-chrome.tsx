@@ -3,7 +3,9 @@ import Image from "next/image";
 import { BriefcaseBusiness, Camera, ExternalLink, Mail, MapPin } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 
-function SecMark({ compact = false }: { compact?: boolean }) {
+type SecMarkProps = { compact?: boolean };
+
+function SecMark({ compact = false }: SecMarkProps) {
   return (
     <span
       className={`sec-wordmark ${compact ? "sec-wordmark--compact" : ""}`}

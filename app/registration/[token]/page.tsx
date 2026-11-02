@@ -4,8 +4,7 @@ import { ManageRegistration } from "@/components/manage-registration";
 import { registrationIdFromManageToken } from "@/lib/auth";
 import { findRegistration, getEvent } from "@/lib/store";
 
-// The URL is what grants access, so keep it out of search results and out of the
-// Referer header when a student follows a link in the event description.
+// The URL grants access, so keep it out of search indexes and outgoing Referer headers.
 export const metadata: Metadata = { title: "Your registration", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 export default async function ManageRegistrationPage({ params }: { params: Promise<{ token: string }> }) {

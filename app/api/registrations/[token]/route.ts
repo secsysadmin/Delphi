@@ -1,47 +1,61 @@
 import { NextResponse } from "next/server";
 import { isSameOriginRequest, registrationIdFromManageToken } from "@/lib/auth";
-import { publicError } from "@/lib/errors";
 import { sendConfirmation, sendWithdrawal } from "@/lib/email";
+import { publicError } from "@/lib/errors";
 import { findRegistration, updateEmailStatus, updateRegistration, withdrawRegistration } from "@/lib/store";
+import type { Registration } from "@/types";
 
-async function registrationFor(request: Request, params: Promise<{ token: string }>) {
+type TokenParams = { params: Promise<{ token: string }> };
+type UpdateResult = Awaited<ReturnType<typeof updateRegistration>>;
+
+const INVALID_LINK_MESSAGE = "This link isn't valid. Request a new one from the event page.";
+
+async function registrationFor(request: Request, params: TokenParams["params"]) {
   if (!isSameOriginRequest(request)) return { response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   const registrationId = registrationIdFromManageToken((await params).token);
   const registration = registrationId ? await findRegistration(registrationId) : null;
-  if (!registration) return { response: NextResponse.json({ error: "This link isn't valid. Request a new one from the event page." }, { status: 404 }) };
+  if (!registration) return { response: NextResponse.json({ error: INVALID_LINK_MESSAGE }, { status: 404 }) };
   return { registration };
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ token: string }> }) {
+async function resendConfirmation(result: UpdateResult) {
+  let emailStatus = "failed";
+  try {
+    emailStatus = (await sendConfirmation(result.registration, result.event, result.slot)).status;
+  } catch (error) {
+    console.error(`Updated confirmation for registration ${result.registration.id} failed`, error);
+  }
+  await updateEmailStatus(result.registration.id, emailStatus);
+  return emailStatus;
+}
+
+async function confirmWithdrawal(registration: Registration, event: UpdateResult["event"]) {
+  try {
+    await sendWithdrawal(registration, event);
+  } catch (error) {
+    console.error(`Withdrawal email for registration ${registration.id} failed`, error);
+  }
+}
+
+export async function PATCH(request: Request, { params }: TokenParams) {
   const { registration, response } = await registrationFor(request, params);
   if (!registration) return response;
   try {
     const result = await updateRegistration(registration, await request.json());
-    // A new session means a new time and room, so send a confirmation they can rely on.
-    if (result.slotChanged) {
-      let emailStatus = "failed";
-      try {
-        emailStatus = (await sendConfirmation(result.registration, result.event, result.slot)).status;
-      } catch (error) {
-        console.error("Updated confirmation email failed", error);
-      }
-      await updateEmailStatus(result.registration.id, emailStatus);
-      result.registration.emailStatus = emailStatus;
-    }
-    return NextResponse.json({ registration: result.registration, emailed: result.slotChanged });
+    if (!result.slotChanged) return NextResponse.json({ registration: result.registration, emailed: false });
+    const emailStatus = await resendConfirmation(result);
+    return NextResponse.json({ registration: { ...result.registration, emailStatus }, emailed: true });
   } catch (error) {
     return NextResponse.json({ error: publicError(error, "Your changes couldn't be saved. Please try again.") }, { status: 400 });
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function DELETE(request: Request, { params }: TokenParams) {
   const { registration, response } = await registrationFor(request, params);
   if (!registration) return response;
   try {
     const result = await withdrawRegistration(registration);
-    if (result.withdrawn) {
-      await sendWithdrawal(registration, result.event).catch((error) => console.error("Withdrawal email failed", error));
-    }
+    if (result.withdrawn) await confirmWithdrawal(registration, result.event);
     return NextResponse.json({ status: "cancelled" });
   } catch (error) {
     return NextResponse.json({ error: publicError(error, "Your registration couldn't be withdrawn. Please try again.") }, { status: 400 });

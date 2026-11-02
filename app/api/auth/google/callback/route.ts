@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionValue, isWhitelistedAdminEmail, oauthStateCookie, sessionCookie } from "@/lib/auth";
+import { cookieOptions, createSessionValue, expiredCookie, isWhitelistedAdminEmail, oauthStateCookie, sessionCookie } from "@/lib/auth";
 import { exchangeGoogleCode, fetchGoogleProfile, googleOAuthConfigured } from "@/lib/google-auth";
+
+function clearState(response: NextResponse) {
+  response.cookies.set(oauthStateCookie.name, "", expiredCookie);
+  return response;
+}
 
 export async function GET(request: NextRequest) {
   const loginUrl = new URL("/admin/login", request.url);
@@ -9,12 +14,6 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const cookieState = request.cookies.get(oauthStateCookie.name)?.value;
-
-  const clearState = (response: NextResponse) => {
-    response.cookies.set(oauthStateCookie.name, "", { expires: new Date(0), path: "/" });
-    return response;
-  };
-
   if (!code || !state || !cookieState || state !== cookieState) {
     return clearState(NextResponse.redirect(`${loginUrl}?error=state`));
   }
@@ -34,15 +33,10 @@ export async function GET(request: NextRequest) {
     }
 
     const response = NextResponse.redirect(new URL("/admin", request.url));
-    response.cookies.set(sessionCookie.name, createSessionValue(email), {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: sessionCookie.maxAge,
-    });
+    response.cookies.set(sessionCookie.name, createSessionValue(email), cookieOptions(sessionCookie.maxAge));
     return clearState(response);
-  } catch {
+  } catch (error) {
+    console.error("Google sign-in failed", error);
     return clearState(NextResponse.redirect(`${loginUrl}?error=google`));
   }
 }

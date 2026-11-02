@@ -3,18 +3,22 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, CalendarDays, Check, Clock3, MapPin, UserRound } from "lucide-react";
-import { Field } from "@/components/event-registration";
+import { Field, UIN_PATTERN } from "@/components/event-registration";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RichText } from "@/components/rich-text";
+import { jsonRequest, sendJson } from "@/lib/api-client";
 import { validateFields } from "@/lib/form-validation";
-import { formatDate, formatRange, formatTime } from "@/lib/utils";
+import { formatDate, formatRange, formatTime, plural } from "@/lib/utils";
 import type { Registration, RegistrationEvent } from "@/types";
 
-async function readJson(response: Response | null) {
-  return (response ? await response.json().catch(() => ({})) : {}) as { error?: string; registration?: Registration; emailed?: boolean };
+type ManageRegistrationProps = { token: string; event: RegistrationEvent; initialRegistration: Registration };
+type UpdateResponse = { registration: Registration; emailed: boolean };
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function ManageRegistration({ token, event, initialRegistration }: { token: string; event: RegistrationEvent; initialRegistration: Registration }) {
+export function ManageRegistration({ token, event, initialRegistration }: ManageRegistrationProps) {
   const [registration, setRegistration] = useState(initialRegistration);
   const [slotId, setSlotId] = useState(initialRegistration.slotId ?? "");
   const [answers, setAnswers] = useState(initialRegistration.answers);
@@ -24,12 +28,10 @@ export function ManageRegistration({ token, event, initialRegistration }: { toke
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
 
-  // The notice sits above the form, usually off-screen by the time someone presses Save.
   useEffect(() => {
-    if (notice) noticeRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    if (notice) noticeRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
   }, [notice]);
 
-  // Rendered at request time, so a page left open past a deadline gets a clear error from the server instead.
   const [now] = useState(() => Date.now());
   const canEdit = event.status === "published" && new Date(event.registrationCloseAt).getTime() > now;
   const canWithdraw = new Date(event.startAt).getTime() > now;
@@ -42,14 +44,10 @@ export function ManageRegistration({ token, event, initialRegistration }: { toke
     const form = new FormData(formEvent.currentTarget);
     setSaving(true);
     setNotice(null);
-    const response = await fetch(`/api/registrations/${token}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ slotId: slotId || null, firstName: form.get("firstName"), lastName: form.get("lastName"), uin: form.get("uin"), answers }),
-    }).catch(() => null);
-    const data = await readJson(response);
+    const payload = { slotId: slotId || null, firstName: form.get("firstName"), lastName: form.get("lastName"), uin: form.get("uin"), answers };
+    const { ok, data, error } = await sendJson<UpdateResponse>(`/api/registrations/${token}`, jsonRequest("PATCH", payload));
     setSaving(false);
-    if (!response?.ok || !data.registration) return setNotice({ ok: false, text: data.error || "Could not reach the server. Check your connection and try again." });
+    if (!ok || !data.registration) return setNotice({ ok: false, text: error || "Your changes couldn't be saved. Please try again." });
     setRegistration(data.registration);
     setNotice({ ok: true, text: data.emailed && data.registration.emailStatus === "sent" ? `Changes saved. We emailed an updated confirmation to ${registration.email}.` : "Changes saved." });
   }
@@ -58,10 +56,9 @@ export function ManageRegistration({ token, event, initialRegistration }: { toke
     setConfirmWithdraw(false);
     setWithdrawing(true);
     setNotice(null);
-    const response = await fetch(`/api/registrations/${token}`, { method: "DELETE" }).catch(() => null);
-    const data = await readJson(response);
+    const { ok, error } = await sendJson<{ status: string }>(`/api/registrations/${token}`, { method: "DELETE" });
     setWithdrawing(false);
-    if (!response?.ok) return setNotice({ ok: false, text: data.error || "Could not reach the server. Check your connection and try again." });
+    if (!ok) return setNotice({ ok: false, text: error || "Your registration couldn't be withdrawn. Please try again." });
     setRegistration((current) => ({ ...current, status: "cancelled" }));
     window.scrollTo({ top: 0 });
   }
@@ -96,9 +93,9 @@ export function ManageRegistration({ token, event, initialRegistration }: { toke
               {event.slots.length > 0 && <fieldset><legend><span>01</span> Your session</legend><p className="fieldset-intro">Switch to another session if one still has room.</p><div className="slot-grid" data-field data-required-message="Choose a time slot">{event.slots.map((item) => {
                 const current = item.id === registration.slotId;
                 const full = item.remaining === 0 && !current;
-                return <label key={item.id} className={`slot-card ${slotId === item.id ? "slot-card--selected" : ""} ${full ? "slot-card--full" : ""}`}><input type="radio" name="slot" value={item.id} checked={slotId === item.id} onChange={() => setSlotId(item.id)} required disabled={full} /><span className="slot-card__check"><Check /></span><strong>{item.label}</strong><span>{formatDate(item.startAt)} · {formatTime(item.startAt)}–{formatTime(item.endAt)}</span><span><MapPin size={15} /> {item.location}</span><small>{current ? "Your current session" : full ? "Full" : item.remaining === null ? "Available" : `${item.remaining} spot${item.remaining === 1 ? "" : "s"} left`}</small></label>;
+                return <label key={item.id} className={`slot-card ${slotId === item.id ? "slot-card--selected" : ""} ${full ? "slot-card--full" : ""}`}><input type="radio" name="slot" value={item.id} checked={slotId === item.id} onChange={() => setSlotId(item.id)} required disabled={full} /><span className="slot-card__check"><Check /></span><strong>{item.label}</strong><span>{formatDate(item.startAt)} · {formatTime(item.startAt)}–{formatTime(item.endAt)}</span><span><MapPin size={15} /> {item.location}</span><small>{current ? "Your current session" : full ? "Full" : item.remaining === null ? "Available" : `${plural(item.remaining, "spot")} left`}</small></label>;
               })}</div></fieldset>}
-              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label><span>First name <em>*</em></span><input name="firstName" autoComplete="given-name" required defaultValue={registration.firstName} /></label><label><span>Last name <em>*</em></span><input name="lastName" autoComplete="family-name" required defaultValue={registration.lastName} /></label><label><span>Email address</span><input type="email" value={registration.email} disabled aria-describedby="manage-email-help" /><small id="manage-email-help">To use a different email, withdraw and register again.</small></label><label><span>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}</span><input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} defaultValue={registration.uin} /></label></div></fieldset>
+              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label><span>First name <em>*</em></span><input name="firstName" autoComplete="given-name" required defaultValue={registration.firstName} /></label><label><span>Last name <em>*</em></span><input name="lastName" autoComplete="family-name" required defaultValue={registration.lastName} /></label><label><span>Email address</span><input type="email" value={registration.email} disabled aria-describedby="manage-email-help" /><small id="manage-email-help">To use a different email, withdraw and register again.</small></label><label><span>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}</span><input name="uin" inputMode="numeric" pattern={UIN_PATTERN} placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} defaultValue={registration.uin} /></label></div></fieldset>
               {event.formFields.length > 0 && <fieldset><legend><span>{event.slots.length ? "03" : "02"}</span> Event questions</legend><div className="form-stack">{event.formFields.map((field) => field.type === "section" ? <div key={field.id} className="form-section-block">{field.label && <h3>{field.label}</h3>}{field.helpText && <RichText text={field.helpText} />}</div> : <label key={field.id} className="custom-field" data-field htmlFor={`field-${field.id}`}><span>{field.label} {field.required && <em>*</em>}</span>{field.helpText && <small id={`field-${field.id}-help`}>{field.helpText}</small>}<Field field={field} value={answers[field.id]} onChange={(value) => setAnswers((current) => ({ ...current, [field.id]: value }))} /></label>)}</div></fieldset>}
               <button className="button button--primary button--large" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
             </form>

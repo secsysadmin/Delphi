@@ -3,24 +3,26 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
-const ownScrollRoute = /^\/events\/[^/]+$/;
+const OWN_SCROLL_ROUTE = /^\/events\/[^/]+$/;
+const NEW_EVENT_PATH = "/admin/events/new";
+const EDIT_EVENT_ROUTE = /^\/admin\/events\/[^/]+\/edit$/;
+
+function isDraftPromotion(previous: string, next: string) {
+  return previous === NEW_EVENT_PATH && EDIT_EVENT_ROUTE.test(next);
+}
 
 export function ScrollRestorationGuard() {
   const pathname = usePathname();
   const previousPathname = useRef(pathname);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "scrollRestoration" in window.history) {
-      window.history.scrollRestoration = "manual";
-    }
+    if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   }, []);
 
   useEffect(() => {
     const previous = previousPathname.current;
     previousPathname.current = pathname;
-    if (ownScrollRoute.test(pathname)) return;
-    // A new event's first autosave swaps /new for /edit in place; the admin is still on the same page.
-    if (previous === "/admin/events/new" && /^\/admin\/events\/[^/]+\/edit$/.test(pathname)) return;
+    if (OWN_SCROLL_ROUTE.test(pathname) || isDraftPromotion(previous, pathname)) return;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [pathname]);
 

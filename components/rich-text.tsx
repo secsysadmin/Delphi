@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
 
+type Block = { kind: "p"; lines: string[] } | { kind: "ul" | "ol"; items: string[] };
+type RichTextProps = { text: string };
+
+const BULLET = /^\s*[-*•]\s+(.*)$/;
+const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
 const INLINE = /\*\*(.+?)\*\*|(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])|(https?:\/\/[^\s)]+)/g;
 
 function inline(text: string, key: string): ReactNode[] {
@@ -19,33 +24,31 @@ function inline(text: string, key: string): ReactNode[] {
   return parts;
 }
 
-type Block = { kind: "p"; lines: string[] } | { kind: "ul" | "ol"; items: string[] };
+function listItem(line: string): { kind: "ul" | "ol"; item: string } | null {
+  const bullet = line.match(BULLET);
+  if (bullet) return { kind: "ul", item: bullet[1] };
+  const numbered = line.match(NUMBERED);
+  return numbered ? { kind: "ol", item: numbered[1] } : null;
+}
 
-const BULLET = /^\s*[-*•]\s+(.*)$/;
-const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
-
-// Lightweight formatting for organizer-written text: **bold**, *italics*, "- " bullets, "1. " lists and links.
-export function RichText({ text, className }: { text: string; className?: string }) {
+function parseBlocks(text: string) {
   const blocks: Block[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const bullet = line.match(BULLET);
-    const numbered = bullet ? null : line.match(NUMBERED);
+    const list = listItem(line);
     const current = blocks[blocks.length - 1];
-    if (bullet || numbered) {
-      const kind = bullet ? "ul" : "ol";
-      const item = (bullet ?? numbered)![1];
-      if (current?.kind === kind) current.items.push(item);
-      else blocks.push({ kind, items: [item] });
-    } else if (!line.trim()) {
-      blocks.push({ kind: "p", lines: [] });
-    } else if (current?.kind === "p") {
-      current.lines.push(line);
-    } else {
-      blocks.push({ kind: "p", lines: [line] });
-    }
+    if (list && current?.kind === list.kind) current.items.push(list.item);
+    else if (list) blocks.push({ kind: list.kind, items: [list.item] });
+    else if (!line.trim()) blocks.push({ kind: "p", lines: [] });
+    else if (current?.kind === "p") current.lines.push(line);
+    else blocks.push({ kind: "p", lines: [line] });
   }
+  return blocks;
+}
+
+export function RichText({ text }: RichTextProps) {
+  const blocks = parseBlocks(text);
   return (
-    <div className={className ? `rich-text ${className}` : "rich-text"}>
+    <div className="rich-text">
       {blocks.map((block, b) => {
         if (block.kind === "p") {
           if (!block.lines.length) return null;
