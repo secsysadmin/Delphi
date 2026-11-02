@@ -10,6 +10,8 @@ export const TEMPLATE_VARIABLES = ["firstName", "name", "event", "slot", "date",
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const SLUG_MAX_LENGTH = 80;
+const COMMON_EMAIL_DOMAINS = ["tamu.edu", "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "live.com", "aol.com"];
+const MAX_DOMAIN_TYPO_DISTANCE = 2;
 const CARD_FALLBACK_BACKGROUND = "#f7f4f1";
 const CARD_LIGHT_TEXT = "#fff8ef";
 const CARD_DARK_TEXT = "#242321";
@@ -187,4 +189,22 @@ export function registrationWindowProblem(event: { registrationCloseAt: string; 
   if (close <= now) return "Registration closes in the past, so it would close as soon as you publish. Pick a future close time.";
   if (close > new Date(event.endAt).getTime()) return "Registration has to close before the event ends.";
   return null;
+}
+
+function editDistance(a: string, b: string) {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+export function suggestEmail(email: string) {
+  const [local, domain, ...rest] = email.trim().toLowerCase().split("@");
+  if (!local || !domain || rest.length || COMMON_EMAIL_DOMAINS.includes(domain)) return null;
+  const match = COMMON_EMAIL_DOMAINS.find((candidate) => editDistance(domain, candidate) <= MAX_DOMAIN_TYPO_DISTANCE)
+    ?? COMMON_EMAIL_DOMAINS.find((candidate) => domain.split(".")[0] === candidate.split(".")[0]);
+  return match ? `${local}@${match}` : null;
 }

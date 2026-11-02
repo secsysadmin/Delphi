@@ -10,6 +10,8 @@ const OAUTH_STATE_MAX_AGE_SECONDS = 60 * 10;
 const PREVIEW_SECRET = "local-preview-secret-change-before-deploy";
 const DEFAULT_PREVIEW_ADMIN = "admin@sec.tamu.edu";
 const SAME_SITE_FETCH_VALUES = new Set(["same-origin", "none"]);
+const MANAGE_TOKEN_PREFIX = "manage:";
+const REGISTRATION_ID_PATTERN = /^[0-9a-f-]{36}$/i;
 
 export const sessionCookie = { name: COOKIE_NAME, maxAge: SESSION_MAX_AGE_SECONDS };
 export const oauthStateCookie = { name: STATE_COOKIE_NAME, maxAge: OAUTH_STATE_MAX_AGE_SECONDS };
@@ -76,6 +78,17 @@ export async function isAdmin() {
   const email = await currentAdminEmail();
   if (!email) return false;
   return hasDatabase ? Boolean(await getAdminUserByEmail(email)) : true;
+}
+
+// The prefix keeps manage-link signatures from ever matching a session-cookie signature.
+export function manageToken(registrationId: string) {
+  return `${registrationId}.${sign(`${MANAGE_TOKEN_PREFIX}${registrationId}`)}`;
+}
+
+export function registrationIdFromManageToken(token: string) {
+  const [registrationId, signature] = token.split(".");
+  if (!registrationId || !signature || !REGISTRATION_ID_PATTERN.test(registrationId)) return null;
+  return hasValidSignature(`${MANAGE_TOKEN_PREFIX}${registrationId}`, signature) ? registrationId : null;
 }
 
 function originMatches(origin: string, requestUrl: string) {

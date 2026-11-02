@@ -2,32 +2,12 @@ import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/auth";
 import { sendConfirmation } from "@/lib/email";
 import { isDatabaseError, isUniqueViolation } from "@/lib/errors";
-import { createRegistration, updateEmailStatus } from "@/lib/store";
+import { rateLimiter } from "@/lib/rate-limit";
+import { createRegistration, DuplicateRegistrationError, updateEmailStatus } from "@/lib/store";
 
-const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_ATTEMPTS = 10;
-const RATE_LIMIT_PRUNE_SIZE = 5000;
 
-const attempts = new Map<string, { count: number; resetAt: number }>();
-
-function pruneExpiredAttempts(now: number) {
-  attempts.forEach((entry, key) => {
-    if (entry.resetAt < now) attempts.delete(key);
-  });
-}
-
-function rateLimited(request: Request) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now();
-  if (attempts.size > RATE_LIMIT_PRUNE_SIZE) pruneExpiredAttempts(now);
-  const current = attempts.get(ip);
-  if (!current || current.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-  current.count++;
-  return current.count > RATE_LIMIT_MAX_ATTEMPTS;
-}
+const rateLimited = rateLimiter({ limit: RATE_LIMIT_MAX_ATTEMPTS });
 
 async function confirmationStatus(result: Awaited<ReturnType<typeof createRegistration>>) {
   try {
@@ -39,7 +19,7 @@ async function confirmationStatus(result: Awaited<ReturnType<typeof createRegist
 }
 
 function registrationError(error: unknown) {
-  if (isUniqueViolation(error)) return NextResponse.json({ error: "This email is already registered for the event." }, { status: 409 });
+  if (error instanceof DuplicateRegistrationError || isUniqueViolation(error)) return NextResponse.json({ error: "This email is already registered for the event." }, { status: 409 });
   if (isDatabaseError(error) || !(error instanceof Error)) {
     console.error("Registration failed", error);
     return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 500 });

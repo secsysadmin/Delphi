@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, Download, Mail, RotateCw, Search, Send, Trash2, Users } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Check, Download, Mail, Pencil, RotateCw, Search, Send, Trash2, Users } from "lucide-react";
 import { getJson, jsonRequest, sendJson } from "@/lib/api-client";
 import type { BroadcastResult } from "@/lib/email";
 import { TEMPLATE_VARIABLES, formatAnswer, formatDate, formatRange, isQuestion, plural } from "@/lib/utils";
@@ -21,11 +21,14 @@ type ParticipantRowProps = {
   onSelect: (selected: boolean) => void;
   onResend: () => void;
   onRemove: () => void;
+  onCorrectEmail: (email: string) => Promise<boolean>;
 };
+type EmailCellProps = { registration: Registration; onSave: (email: string) => Promise<boolean> };
 
 const EMAIL_STATUS_LABELS: Record<string, string> = { sent: "Sent", delivered: "Sent", failed: "Failed", previewed: "Not sent", pending: "Pending" };
 const SENT_EMAIL_STATUSES = new Set(["sent", "delivered"]);
 const DEFAULT_BROADCAST_SUBJECT = "An update about {{event}}";
+const WITHDRAWN_STATUS = "cancelled";
 const DEFAULT_BROADCAST_BODY = "Howdy {{firstName}}!\n\nWe have an update to share about {{event}}:";
 
 function broadcastNotice({ sent, failed, failedEmails, preview }: Partial<BroadcastResult>): Notice {
@@ -35,9 +38,40 @@ function broadcastNotice({ sent, failed, failedEmails, preview }: Partial<Broadc
   return { ok: false, text: `Sent to ${count}. Couldn't deliver to ${failedEmails?.join(", ") || `${failed} recipients`}.` };
 }
 
-function ParticipantRow({ registration, event, questions, selected, resending, deleting, onSelect, onResend, onRemove }: ParticipantRowProps) {
+function correctedEmailNotice({ email, emailStatus }: Registration): Notice {
+  if (emailStatus === "sent") return { ok: true, text: `Email changed to ${email}. A new confirmation with their manage link is on its way.` };
+  if (emailStatus === "failed") return { ok: false, text: `Email changed to ${email}, but the confirmation couldn't be sent. Try the resend button.` };
+  return { ok: true, text: `Email changed to ${email}. Email sending isn't set up on this server, so no confirmation was sent.` };
+}
+
+function EmailCell({ registration, onSave }: EmailCellProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(registration.email);
+  const [saving, setSaving] = useState(false);
   const name = `${registration.firstName} ${registration.lastName}`;
-  return <tr><td><input type="checkbox" checked={selected} onChange={(e) => onSelect(e.target.checked)} /></td><td><strong>{name}</strong><small>{registration.status}</small></td><td>{registration.email}</td><td>{registration.uin || "—"}</td><td>{event.slots.find((slot) => slot.id === registration.slotId)?.label || "—"}</td>{questions.map((field) => <td key={field.id}>{formatAnswer(registration.answers[field.id]) || "—"}</td>)}<td><span className={`email-status email-status--${registration.emailStatus}`}>{EMAIL_STATUS_LABELS[registration.emailStatus] ?? registration.emailStatus}</span></td><td>{formatDate(registration.createdAt, true)}</td><td className="registration-table__actions"><button type="button" className="registration-resend" onClick={onResend} disabled={resending} aria-label={`Resend confirmation to ${name}`} title="Resend confirmation email"><RotateCw /></button><button type="button" className="registration-delete" onClick={onRemove} disabled={deleting} aria-label={`Remove ${name}`} title="Remove participant"><Trash2 /></button></td></tr>;
+
+  function startEditing() {
+    setDraft(registration.email);
+    setEditing(true);
+  }
+
+  async function save(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    if (!formEvent.currentTarget.reportValidity()) return;
+    setSaving(true);
+    const saved = await onSave(draft.trim());
+    setSaving(false);
+    if (saved) setEditing(false);
+  }
+
+  if (!editing) return <td><span className="registration-email">{registration.email}{registration.status !== WITHDRAWN_STATUS && <button type="button" className="registration-email__edit" onClick={startEditing} aria-label={`Fix email for ${name}`} title="Fix a mistyped email"><Pencil /></button>}</span></td>;
+  return <td><form className="registration-email-form" onSubmit={save} onKeyDown={(event) => { if (event.key === "Escape") setEditing(false); }}><input type="email" required autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={`Corrected email for ${name}`} /><div><button className="button button--primary" disabled={saving}>{saving ? "Saving…" : "Save & resend"}</button><button type="button" className="button button--secondary" onClick={() => setEditing(false)} disabled={saving}>Cancel</button></div></form></td>;
+}
+
+function ParticipantRow({ registration, event, questions, selected, resending, deleting, onSelect, onResend, onRemove, onCorrectEmail }: ParticipantRowProps) {
+  const name = `${registration.firstName} ${registration.lastName}`;
+  const withdrawn = registration.status === WITHDRAWN_STATUS;
+  return <tr><td><input type="checkbox" checked={selected} onChange={(e) => onSelect(e.target.checked)} /></td><td><strong>{name}</strong><small className={`registration-status registration-status--${registration.status}`}>{withdrawn ? "Withdrawn" : registration.status}</small></td><EmailCell registration={registration} onSave={onCorrectEmail} /><td>{registration.uin || "—"}</td><td>{event.slots.find((slot) => slot.id === registration.slotId)?.label || "—"}</td>{questions.map((field) => <td key={field.id}>{formatAnswer(registration.answers[field.id]) || "—"}</td>)}<td><span className={`email-status email-status--${registration.emailStatus}`}>{EMAIL_STATUS_LABELS[registration.emailStatus] ?? registration.emailStatus}</span></td><td>{formatDate(registration.createdAt, true)}</td><td className="registration-table__actions"><button type="button" className="registration-resend" onClick={onResend} disabled={resending || withdrawn} aria-label={`Resend confirmation to ${name}`} title={withdrawn ? "Withdrawn registrations can't be confirmed" : "Resend confirmation email"}><RotateCw /></button><button type="button" className="registration-delete" onClick={onRemove} disabled={deleting} aria-label={`Remove ${name}`} title="Remove participant"><Trash2 /></button></td></tr>;
 }
 
 export function RegistrationManager({ eventId }: RegistrationManagerProps) {
@@ -95,6 +129,19 @@ export function RegistrationManager({ eventId }: RegistrationManagerProps) {
     setNotice({ ok: true, text: data.emailStatus === "sent" ? `Confirmation re-sent to ${registration.email}.` : `Email sending isn't set up on this server, so nothing was sent to ${registration.email}.` });
   }
 
+  async function correctEmail(registration: Registration, email: string) {
+    setNotice(null);
+    const { ok, data, error } = await sendJson<{ registration: Registration }>(`/api/events/${eventId}/registrations/${registration.id}`, jsonRequest("PATCH", { email }));
+    const updated = data.registration;
+    if (!ok || !updated) {
+      setNotice({ ok: false, text: error || "Could not update the email." });
+      return false;
+    }
+    setRegistrations((current) => current.map((item) => item.id === updated.id ? updated : item));
+    setNotice(correctedEmailNotice(updated));
+    return true;
+  }
+
   if (loadError) return <div className="shell empty-state page-space"><h2>Registrations unavailable</h2><p>{loadError}</p><Link href="/admin" className="button button--primary">Back to dashboard</Link></div>;
   if (!event) return <div className="shell page-loading">Loading registrations…</div>;
   return <div className="shell admin-shell registrations-page">
@@ -103,7 +150,7 @@ export function RegistrationManager({ eventId }: RegistrationManagerProps) {
     <div className="metric-grid metric-grid--three"><div className="metric-card"><span><Users /></span><div><strong>{registrations.length}</strong><small>Total registrations</small></div></div><div className="metric-card"><span><Check /></span><div><strong>{registrations.filter((item) => item.status === "confirmed").length}</strong><small>Confirmed</small></div></div><div className="metric-card"><span><Mail /></span><div><strong>{registrations.filter((item) => SENT_EMAIL_STATUSES.has(item.emailStatus)).length}</strong><small>Confirmations sent{failedCount ? ` · ${failedCount} failed` : ""}</small></div></div></div>
     {showEmail && <section className="broadcast-panel"><div className="broadcast-panel__head"><div><span className="eyebrow">New message</span><h2>Email {plural(selected.length, "selected registrant")}</h2></div><button onClick={() => setShowEmail(false)}>×</button></div><div className="form-stack"><label>Subject<input value={subject} onChange={(e) => setSubject(e.target.value)} /></label><label>Message<textarea rows={6} value={body} onChange={(e) => setBody(e.target.value)} /></label><small>Variables supported: {TEMPLATE_VARIABLES.map((variable) => `{{${variable}}}`).join(", ")}</small></div>{message && <div className={message.ok ? "form-success" : "form-error"} role="status">{message.text}</div>}<button className="button button--primary" onClick={sendEmail} disabled={sending || !hasSelectedRegistrants}><Send /> {sending ? "Sending…" : "Send message"}</button></section>}
     {notice && <div className={notice.ok ? "form-success" : "form-error"} role="status">{notice.text}</div>}
-    <section className="admin-panel registration-table-panel"><div className="admin-panel__head"><h2>Participant list</h2><label className="search-box search-box--small"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search participants" aria-label="Search participants" /></label></div>{visible.length ? <div className="registration-table-wrap"><table className="registration-table"><thead><tr><th><input type="checkbox" aria-label="Select all" checked={visible.length > 0 && visible.every((item) => selected.includes(item.id))} onChange={(e) => setSelected(e.target.checked ? visible.map((item) => item.id) : [])} /></th><th>Name</th><th>Email</th><th>UIN</th><th>Session</th>{questions.map((field) => <th key={field.id}>{field.label}</th>)}<th>Confirmation</th><th>Registered</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visible.map((registration) => <ParticipantRow key={registration.id} registration={registration} event={event} questions={questions} selected={selected.includes(registration.id)} resending={resendingId === registration.id} deleting={deletingId === registration.id} onSelect={(checked) => setSelected((current) => checked ? [...current, registration.id] : current.filter((id) => id !== registration.id))} onResend={() => resendConfirmation(registration)} onRemove={() => setPendingRemoval(registration)} />)}</tbody></table></div> : <div className="empty-state"><Users /><h3>No registrations yet</h3><p>Registrants will appear here, even after the form closes.</p></div>}</section>
+    <section className="admin-panel registration-table-panel"><div className="admin-panel__head"><h2>Participant list</h2><label className="search-box search-box--small"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search participants" aria-label="Search participants" /></label></div>{visible.length ? <div className="registration-table-wrap"><table className="registration-table"><thead><tr><th><input type="checkbox" aria-label="Select all" checked={visible.length > 0 && visible.every((item) => selected.includes(item.id))} onChange={(e) => setSelected(e.target.checked ? visible.map((item) => item.id) : [])} /></th><th>Name</th><th>Email</th><th>UIN</th><th>Session</th>{questions.map((field) => <th key={field.id}>{field.label}</th>)}<th>Confirmation</th><th>Registered</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visible.map((registration) => <ParticipantRow key={registration.id} registration={registration} event={event} questions={questions} selected={selected.includes(registration.id)} resending={resendingId === registration.id} deleting={deletingId === registration.id} onSelect={(checked) => setSelected((current) => checked ? [...current, registration.id] : current.filter((id) => id !== registration.id))} onResend={() => resendConfirmation(registration)} onRemove={() => setPendingRemoval(registration)} onCorrectEmail={(email) => correctEmail(registration, email)} />)}</tbody></table></div> : <div className="empty-state"><Users /><h3>No registrations yet</h3><p>Registrants will appear here, even after the form closes.</p></div>}</section>
     <ConfirmDialog
       open={pendingRemoval !== null}
       title="Remove this participant?"

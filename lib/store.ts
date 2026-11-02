@@ -24,7 +24,7 @@ const CHOICE_TYPES = new Set(["select", "radio", "multiselect"]);
 const FALLBACK_SLUG = "event";
 const SLUG_SAVE_ATTEMPTS = 3;
 const UIN_PATTERN = /^\d{9}$/;
-const REGISTRANT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const REGISTRANT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TAMU_EMAIL_SUFFIX = "@tamu.edu";
 const MAX_LENGTH = {
   title: 160,
@@ -58,6 +58,8 @@ type RegistrationInput = {
   answers: Record<string, unknown>;
 };
 type CleanRegistration = Omit<Registration, "id" | "eventId" | "status" | "emailStatus" | "createdAt">;
+type RegistrantInput = Omit<RegistrationInput, "email">;
+type CleanRegistrant = Omit<CleanRegistration, "email">;
 
 const globalDemo = globalThis as unknown as { secDemo?: DemoState };
 const demo = (globalDemo.secDemo ??= {
@@ -457,6 +459,13 @@ export async function deleteRegistration(eventId: string, registrationId: string
   return deleted.length > 0;
 }
 
+
+export class DuplicateRegistrationError extends Error {
+  constructor() {
+    super("This email is already registered for the event.");
+  }
+}
+
 function cleanAnswer(field: FormField, value: unknown): Answer | undefined {
   const options = (field.options ?? []).map((option) => String(option).trim());
   if (field.type === "checkbox") return value === true;
@@ -485,18 +494,22 @@ function assertRegistrationOpen(event: RegistrationEvent) {
   if (new Date(event.registrationCloseAt).getTime() < now) throw new Error("Registration is closed.");
 }
 
-function cleanRegistration(event: RegistrationEvent, rawInput: RegistrationInput): CleanRegistration {
+function cleanRegistrantEmail(event: RegistrationEvent, rawEmail: unknown) {
+  const email = text(rawEmail, MAX_LENGTH.email).toLowerCase();
+  if (!REGISTRANT_EMAIL_PATTERN.test(email)) throw new Error("Enter a valid email address.");
+  if (event.tamuEmailOnly && !email.endsWith(TAMU_EMAIL_SUFFIX)) throw new Error("This event is only open to @tamu.edu email addresses.");
+  return email;
+}
+
+function cleanRegistrant(event: RegistrationEvent, rawInput: RegistrantInput): CleanRegistrant {
   const input = {
     slotId: rawInput.slotId ? String(rawInput.slotId) : null,
     firstName: text(rawInput.firstName, MAX_LENGTH.name),
     lastName: text(rawInput.lastName, MAX_LENGTH.name),
-    email: text(rawInput.email, MAX_LENGTH.email).toLowerCase(),
     uin: text(rawInput.uin, MAX_LENGTH.uin),
     answers: cleanAnswers(event.formFields, rawInput.answers),
   };
   if (!input.firstName || !input.lastName) throw new Error("First and last name are required.");
-  if (!REGISTRANT_EMAIL_PATTERN.test(input.email)) throw new Error("Enter a valid email address.");
-  if (event.tamuEmailOnly && !input.email.endsWith(TAMU_EMAIL_SUFFIX)) throw new Error("This event is only open to @tamu.edu email addresses.");
   if (input.uin && !UIN_PATTERN.test(input.uin)) throw new Error("Enter your 9-digit UIN.");
   if (event.uinRequired && !input.uin) throw new Error("UIN is required.");
   const slot = input.slotId ? event.slots.find((item) => item.id === input.slotId) : null;
@@ -504,10 +517,23 @@ function cleanRegistration(event: RegistrationEvent, rawInput: RegistrationInput
   return { ...input, slotId: slot?.id ?? null };
 }
 
+function cleanRegistration(event: RegistrationEvent, rawInput: RegistrationInput): CleanRegistration {
+  const email = cleanRegistrantEmail(event, rawInput.email);
+  return { ...cleanRegistrant(event, rawInput), email };
+}
+
+function findActiveDemoRegistration(eventId: string, email: string) {
+  return demo.registrations.find((item) => item.eventId === eventId && item.email.toLowerCase() === email && item.status !== "cancelled") ?? null;
+}
+
+function findDemoRegistration(registrationId: string) {
+  const registration = demo.registrations.find((item) => item.id === registrationId);
+  if (!registration) throw new Error("Registration not found.");
+  return registration;
+}
+
 function createDemoRegistration({ id, event, slot, input }: { id: string; event: RegistrationEvent; slot: EventSlot | null; input: CleanRegistration }) {
-  if (demo.registrations.some((item) => item.eventId === event.id && item.email.toLowerCase() === input.email && item.status !== "cancelled")) {
-    throw new Error("This email is already registered for the event.");
-  }
+  if (findActiveDemoRegistration(event.id, input.email)) throw new DuplicateRegistrationError();
   if (event.capacityMode === "event" && event.remaining !== null && event.remaining <= 0) throw new Error("This event is full.");
   if (event.capacityMode === "slot" && slot && slot.remaining !== null && slot.remaining <= 0) throw new Error("This time slot is full.");
   const registration: Registration = { ...input, id, eventId: event.id, status: "confirmed", emailStatus: "pending", createdAt: new Date().toISOString() };
@@ -530,7 +556,7 @@ export async function createRegistration(eventId: string, rawInput: Registration
     const lockedEvents = await tx<Row[]>`select id, capacity_mode as "capacityMode", capacity from sec_registration.events where id = ${eventId} for update`;
     if (!lockedEvents.length) throw new Error("Event not found.");
     const duplicate = await tx`select id from sec_registration.registrations where event_id = ${eventId} and lower(email) = lower(${input.email}) and status != 'cancelled' limit 1`;
-    if (duplicate.length) throw new Error("This email is already registered for the event.");
+    if (duplicate.length) throw new DuplicateRegistrationError();
     if (lockedEvents[0].capacityMode === "event" && lockedEvents[0].capacity) {
       const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from sec_registration.registrations where event_id = ${eventId} and status != 'cancelled'`;
       if (count >= Number(lockedEvents[0].capacity)) throw new Error("This event is full.");
@@ -561,4 +587,119 @@ export async function updateEmailStatus(registrationId: string, status: string) 
     return;
   }
   await sql`update sec_registration.registrations set email_status = ${status} where id = ${registrationId}`;
+}
+
+export async function findRegistration(registrationId: string) {
+  if (!sql) return demo.registrations.find((item) => item.id === registrationId) ?? null;
+  const rows = await sql<Row[]>`
+    select id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
+      last_name as "lastName", email, uin, answers, status, email_status as "emailStatus",
+      created_at as "createdAt" from sec_registration.registrations where id = ${registrationId}
+  `;
+  return rows.length ? mapRegistration(rows[0]) : null;
+}
+
+export async function findActiveRegistrationByEmail(eventId: string, email: string) {
+  const normalized = email.trim().toLowerCase();
+  if (!sql) return findActiveDemoRegistration(eventId, normalized);
+  const rows = await sql<Row[]>`
+    select id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
+      last_name as "lastName", email, uin, answers, status, email_status as "emailStatus",
+      created_at as "createdAt" from sec_registration.registrations
+    where event_id = ${eventId} and lower(email) = ${normalized} and status != 'cancelled' limit 1
+  `;
+  return rows.length ? mapRegistration(rows[0]) : null;
+}
+
+function moveDemoSpot(event: RegistrationEvent, { from, to }: { from: string | null; to: string | null }) {
+  releaseSpot(event.slots.find((item) => item.id === from));
+  const target = event.slots.find((item) => item.id === to);
+  if (target) claimSpot(target);
+}
+
+function updateDemoRegistration({ registration, event, input, slotChanged }: { registration: Registration; event: RegistrationEvent; input: CleanRegistrant; slotChanged: boolean }) {
+  const target = findDemoRegistration(registration.id);
+  if (slotChanged) {
+    const slot = event.slots.find((item) => item.id === input.slotId);
+    if (slot?.remaining === 0) throw new Error("This time slot is full.");
+    moveDemoSpot(event, { from: target.slotId, to: input.slotId });
+  }
+  Object.assign(target, input);
+  return target;
+}
+
+export async function updateRegistration(registration: Registration, rawInput: RegistrantInput) {
+  if (registration.status === "cancelled") throw new Error("This registration was withdrawn. Register again from the event page.");
+  const event = await getEvent(registration.eventId);
+  if (!event) throw new Error("This event is no longer available.");
+  if (new Date(event.registrationCloseAt).getTime() < Date.now()) throw new Error("Registration has closed, so changes are locked.");
+  const input = cleanRegistrant(event, rawInput);
+  const slot = event.slots.find((item) => item.id === input.slotId) ?? null;
+  const slotChanged = input.slotId !== registration.slotId;
+  if (!sql) return { registration: updateDemoRegistration({ registration, event, input, slotChanged }), event, slot, slotChanged };
+
+  return sql.begin(async (tx) => {
+    if (slotChanged && slot) {
+      const slots = await tx<Row[]>`select id, capacity from sec_registration.event_slots where id = ${slot.id} and event_id = ${event.id} for update`;
+      if (!slots.length) throw new Error("Time slot not found.");
+      if (slots[0].capacity) {
+        const [{ count }] = await tx<{ count: number }[]>`select count(*)::int as count from sec_registration.registrations where slot_id = ${slot.id} and status != 'cancelled' and id != ${registration.id}`;
+        if (count >= Number(slots[0].capacity)) throw new Error("This time slot is full.");
+      }
+    }
+    const rows = await tx<Row[]>`
+      update sec_registration.registrations set slot_id = ${input.slotId}, first_name = ${input.firstName},
+        last_name = ${input.lastName}, uin = ${input.uin}, answers = ${tx.json(input.answers as never)}
+      where id = ${registration.id} and status != 'cancelled'
+      returning id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
+        last_name as "lastName", email, uin, answers, status, email_status as "emailStatus", created_at as "createdAt"
+    `;
+    if (!rows.length) throw new Error("This registration was withdrawn. Register again from the event page.");
+    return { registration: mapRegistration(rows[0]), event, slot, slotChanged };
+  });
+}
+
+function withdrawDemoRegistration(registrationId: string, event: RegistrationEvent) {
+  const target = findDemoRegistration(registrationId);
+  target.status = "cancelled";
+  releaseSpot(event);
+  releaseSpot(event.slots.find((item) => item.id === target.slotId));
+}
+
+export async function withdrawRegistration(registration: Registration) {
+  const event = await getEvent(registration.eventId, true);
+  if (!event) throw new Error("This event is no longer available.");
+  if (registration.status === "cancelled") return { withdrawn: false, event };
+  if (new Date(event.startAt).getTime() < Date.now()) throw new Error("This event has already started, so it's too late to withdraw.");
+  if (!sql) {
+    withdrawDemoRegistration(registration.id, event);
+    return { withdrawn: true, event };
+  }
+  const rows = await sql`update sec_registration.registrations set status = 'cancelled' where id = ${registration.id} and status != 'cancelled' returning id`;
+  return { withdrawn: rows.length > 0, event };
+}
+
+export async function updateRegistrationEmail(eventId: string, registrationId: string, rawEmail: unknown) {
+  const event = await getEvent(eventId, true);
+  const registration = event && await getRegistration(eventId, registrationId);
+  if (!event || !registration) throw new Error("Participant not found.");
+  if (registration.status === "cancelled") throw new Error(`${registration.firstName} withdrew, so their email can't be changed.`);
+  const email = cleanRegistrantEmail(event, rawEmail);
+  if (email === registration.email.toLowerCase()) throw new Error("That's already their email address.");
+  if (!sql) {
+    if (findActiveDemoRegistration(eventId, email)) throw new DuplicateRegistrationError();
+    const target = findDemoRegistration(registrationId);
+    target.email = email;
+    return { registration: target, event };
+  }
+  const duplicate = await sql`select id from sec_registration.registrations where event_id = ${eventId} and lower(email) = ${email} and status != 'cancelled' limit 1`;
+  if (duplicate.length) throw new DuplicateRegistrationError();
+  const rows = await sql<Row[]>`
+    update sec_registration.registrations set email = ${email}, email_status = 'pending'
+    where id = ${registrationId} and event_id = ${eventId} and status != 'cancelled'
+    returning id, event_id as "eventId", slot_id as "slotId", first_name as "firstName",
+      last_name as "lastName", email, uin, answers, status, email_status as "emailStatus", created_at as "createdAt"
+  `;
+  if (!rows.length) throw new Error("This participant was removed or withdrew. Refresh the list and try again.");
+  return { registration: mapRegistration(rows[0]), event };
 }

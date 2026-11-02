@@ -1,5 +1,6 @@
 import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
 import { Resend } from "resend";
+import { manageToken } from "@/lib/auth";
 import type { EventSlot, Registration, RegistrationEvent } from "@/types";
 import { confirmationColors, confirmationTemplate, fillTemplate, formatRange, templateValues } from "@/lib/utils";
 
@@ -15,6 +16,13 @@ const MIME_BOUNDARY = "=_SEC_Registration_Boundary";
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 const THROTTLE_ERROR_NAMES = new Set(["Throttling", "ThrottlingException"]);
 const THROTTLE_MESSAGE = /rate exceeded|too many requests/i;
+const BRAND_COLOR = "#4d0710";
+const MUTED_TEXT_COLOR = "#6b6864";
+const BUTTON_MARGIN = "24px 0 0";
+const MANAGE_BUTTON_MARGIN = "10px 0 0";
+const MANAGE_PROMPT = "Need to change your answers or can't make it?";
+const DEFAULT_DEV_PORT = "3000";
+const MISSING_APP_URL_WARNING = "NEXT_PUBLIC_APP_URL isn't set, so emails are going out without a manage link.";
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" };
 
 type Mail = { to: string; subject: string; html: string; text: string };
@@ -132,9 +140,16 @@ async function sendOnce(provider: Provider, from: string, mail: Mail) {
   return data?.id ?? null;
 }
 
+function printUnsentEmail({ to, subject, text }: Mail) {
+  if (process.env.NODE_ENV === "development") console.info(`\n[email not sent] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
+}
+
 async function deliverEmail(mail: Mail) {
   const active = provider();
-  if (!active) return null;
+  if (!active) {
+    printUnsentEmail(mail);
+    return null;
+  }
   const from = process.env.EMAIL_FROM || DEFAULT_FROM;
   for (let attempt = 1; ; attempt++) {
     try {
@@ -146,30 +161,93 @@ async function deliverEmail(mail: Mail) {
   }
 }
 
-function confirmationHtml({ body, event, slot, when, room }: { body: string; event: RegistrationEvent; slot?: EventSlot | null; when: string; room: string }) {
+function emailLayout(heading: string, content: string) {
+  return `<!doctype html><html><body style="margin:0;background:#f4f1ed;font-family:Arial,sans-serif;color:#242321"><div style="max-width:620px;margin:0 auto;padding:32px 18px"><div style="background:${BRAND_COLOR};color:#fff;padding:24px 28px"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8">Student Engineers' Council</div><h1 style="font-size:24px;margin:8px 0 0">${escapeHtml(heading)}</h1></div><div style="background:#fff;padding:28px;border:1px solid #e4dfd8;border-top:0">${content}<p style="font-size:12px;color:${MUTED_TEXT_COLOR};margin-top:28px">SEC Registration Hub · Texas A&amp;M University</p></div></div></body></html>`;
+}
+
+function emailParagraph(text: string) {
+  return `<p style="font-size:16px;line-height:1.7;white-space:pre-line">${escapeHtml(text)}</p>`;
+}
+
+function emailButton({ href, label, margin = BUTTON_MARGIN }: { href: string; label: string; margin?: string }) {
+  return `<p style="margin:${margin}"><a href="${escapeHtml(href)}" style="display:inline-block;padding:12px 20px;background:${BRAND_COLOR};color:#fff;font-weight:bold;text-decoration:none">${escapeHtml(label)}</a></p>`;
+}
+
+function manageHtml(manageLink: string | null) {
+  if (!manageLink) return "";
+  return `<p style="font-size:14px;line-height:1.6;color:${MUTED_TEXT_COLOR};margin:24px 0 0">${escapeHtml(MANAGE_PROMPT)}</p>${emailButton({ href: manageLink, label: "Manage your registration", margin: MANAGE_BUTTON_MARGIN })}`;
+}
+
+function confirmationHtml({ body, event, slot, when, room, manageLink }: { body: string; event: RegistrationEvent; slot?: EventSlot | null; when: string; room: string; manageLink: string | null }) {
   const { background: accent, foreground } = confirmationColors(event.accentColor, slot?.accentColor);
-  return `<!doctype html><html><body style="margin:0;background:#f4f1ed;font-family:Arial,sans-serif;color:#242321"><div style="max-width:620px;margin:0 auto;padding:32px 18px"><div style="background:#4d0710;color:#fff;padding:24px 28px"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.8">Student Engineers' Council</div><h1 style="font-size:24px;margin:8px 0 0">Registration Confirmed</h1></div><div style="background:#fff;padding:28px;border:1px solid #e4dfd8;border-top:0"><p style="font-size:16px;line-height:1.7;white-space:pre-line">${escapeHtml(body)}</p><div style="margin:26px 0 8px;padding:20px;border:1px solid ${accent};background:${accent};color:${foreground}"><strong style="display:block;font-size:20px">${escapeHtml(event.title)}</strong>${slot ? `<span style="display:block;margin-top:6px">${escapeHtml(slot.label)}</span>` : ""}<span style="display:block;margin-top:6px">${escapeHtml(when)}</span><span style="display:block;margin-top:4px">${escapeHtml(room)}</span></div><p style="font-size:12px;color:#6b6864;margin-top:28px">SEC Registration Hub · Texas A&amp;M University</p></div></div></body></html>`;
+  const details = `<div style="margin:26px 0 8px;padding:20px;border:1px solid ${accent};background:${accent};color:${foreground}"><strong style="display:block;font-size:20px">${escapeHtml(event.title)}</strong>${slot ? `<span style="display:block;margin-top:6px">${escapeHtml(slot.label)}</span>` : ""}<span style="display:block;margin-top:6px">${escapeHtml(when)}</span><span style="display:block;margin-top:4px">${escapeHtml(room)}</span></div>`;
+  return emailLayout("Registration Confirmed", `${emailParagraph(body)}${details}${manageHtml(manageLink)}`);
 }
 
 function broadcastHtml(body: string) {
-  return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><div style="height:8px;background:#4d0710"></div><div style="font-size:16px;line-height:1.7;white-space:pre-line;padding:24px 4px">${escapeHtml(body)}</div><p style="color:#777;font-size:12px">SEC Registration Hub · Texas A&amp;M University</p></div>`;
+  return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><div style="height:8px;background:${BRAND_COLOR}"></div><div style="font-size:16px;line-height:1.7;white-space:pre-line;padding:24px 4px">${escapeHtml(body)}</div><p style="color:#777;font-size:12px">SEC Registration Hub · Texas A&amp;M University</p></div>`;
 }
 
-function confirmationEmail(person: Person, event: RegistrationEvent, slot?: EventSlot | null) {
+function localDevUrl() {
+  return process.env.NODE_ENV === "development" ? `http://localhost:${process.env.PORT || DEFAULT_DEV_PORT}` : null;
+}
+
+// Never use the request's Host header here: the public link-request endpoint would email real links to forged domains.
+function appUrl() {
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  const configured = process.env.NEXT_PUBLIC_APP_URL || vercelUrl || localDevUrl();
+  return configured ? configured.replace(/\/+$/, "") : null;
+}
+
+function manageUrl(registrationId: string) {
+  const base = appUrl();
+  if (!base) console.warn(MISSING_APP_URL_WARNING);
+  return base ? `${base}/registration/${manageToken(registrationId)}` : null;
+}
+
+function confirmationEmail({ person, event, slot, manageLink }: { person: Person; event: RegistrationEvent; slot?: EventSlot | null; manageLink: string | null }) {
   const template = confirmationTemplate(event, slot);
   const values = templateValues(person, event, slot);
   const subject = fillTemplate(template.subject, values);
   const body = fillTemplate(template.body, values);
   const when = formatRange(slot?.startAt ?? event.startAt, slot?.endAt ?? event.endAt, event.showDateInConfirmation !== false);
   const room = slot?.location || event.location;
-  const text = [body, "", event.title, slot?.label, when, room].filter((line) => line !== undefined).join("\n");
-  return { subject, text, html: confirmationHtml({ body, event, slot, when, room }) };
+  const manageText = manageLink ? ["", `${MANAGE_PROMPT} Manage your registration: ${manageLink}`] : [];
+  const text = [body, "", event.title, slot?.label, when, room, ...manageText].filter((line) => line !== undefined).join("\n");
+  return { subject, text, html: confirmationHtml({ body, event, slot, when, room, manageLink }) };
+}
+
+function deliveryStatus(id: string | null) {
+  return { status: id ? "sent" : "previewed", id };
 }
 
 export async function sendConfirmation(registration: Registration, event: RegistrationEvent, slot?: EventSlot | null) {
-  const { subject, text, html } = confirmationEmail(registration, event, slot);
-  const id = await deliverEmail({ to: registration.email, subject, html, text });
-  return { status: id ? "sent" : "previewed", id };
+  const { subject, text, html } = confirmationEmail({ person: registration, event, slot, manageLink: manageUrl(registration.id) });
+  return deliveryStatus(await deliverEmail({ to: registration.email, subject, html, text }));
+}
+
+export async function sendManageLink(registration: Registration, event: RegistrationEvent) {
+  const link = manageUrl(registration.id);
+  if (!link) throw new Error("NEXT_PUBLIC_APP_URL must be set to email manage links.");
+  const body = `Howdy ${registration.firstName}! Use the link below to change your answers or withdraw from ${event.title}. Keep this email to yourself: anyone with the link can change your registration.`;
+  return deliveryStatus(await deliverEmail({
+    to: registration.email,
+    subject: `Manage your registration: ${event.title}`,
+    text: `${body}\n\n${link}`,
+    html: emailLayout("Manage Your Registration", `${emailParagraph(body)}${emailButton({ href: link, label: "Manage your registration" })}`),
+  }));
+}
+
+export async function sendWithdrawal(registration: Registration, event: RegistrationEvent) {
+  const base = appUrl();
+  const eventUrl = base ? `${base}/events/${event.slug}` : null;
+  const body = `Howdy ${registration.firstName}! You've withdrawn from ${event.title}, and your spot has been released. If your plans change, you can register again while registration is open.`;
+  return deliveryStatus(await deliverEmail({
+    to: registration.email,
+    subject: `Registration withdrawn: ${event.title}`,
+    text: eventUrl ? `${body}\n\n${eventUrl}` : body,
+    html: emailLayout("Registration Withdrawn", `${emailParagraph(body)}${eventUrl ? emailButton({ href: eventUrl, label: "View the event" }) : ""}`),
+  }));
 }
 
 function pacer(perSecond: number) {

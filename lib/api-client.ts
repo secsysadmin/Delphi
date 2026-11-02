@@ -3,7 +3,7 @@ const UNREACHABLE_MESSAGE = "Could not reach the server. Check your connection a
 
 type WithError<T> = T & { error?: string };
 
-export function jsonRequest(method: "POST" | "PUT", body: unknown): RequestInit {
+export function jsonRequest(method: "POST" | "PUT" | "PATCH", body: unknown): RequestInit {
   return { method, headers: JSON_HEADERS, body: JSON.stringify(body) };
 }
 
@@ -30,15 +30,15 @@ export async function getJson<T>(url: string): Promise<T> {
   return data;
 }
 
-type SendResult<T> = { ok: boolean; data: Partial<T>; error?: string };
+type SendResult<T> = { ok: boolean; status: number; data: Partial<T>; error?: string };
 
 export async function sendJson<T>(url: string, init: RequestInit): Promise<SendResult<T>> {
   const response = await fetch(url, init).catch(() => null);
-  if (!response) return { ok: false, data: {}, error: UNREACHABLE_MESSAGE };
+  if (!response) return { ok: false, status: 0, data: {}, error: UNREACHABLE_MESSAGE };
   try {
     const data = await readJson<T>(response);
-    return { ok: response.ok, data, error: data.error };
+    return { ok: response.ok, status: response.status, data, error: data.error };
   } catch (error) {
-    return { ok: false, data: {}, error: error instanceof Error ? error.message : UNREACHABLE_MESSAGE };
+    return { ok: false, status: response.status, data: {}, error: error instanceof Error ? error.message : UNREACHABLE_MESSAGE };
   }
 }
