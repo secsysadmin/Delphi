@@ -19,5 +19,5 @@ export default async function ManageRegistrationPage({ params }: { params: Promi
       <Link href="/" className="button button--primary">Browse events</Link>
     </div>
   );
-  return <ManageRegistration token={token} event={event} initialRegistration={registration} />;
+  return <ManageRegistration token={token} initialEvent={event} initialRegistration={registration} />;
 }

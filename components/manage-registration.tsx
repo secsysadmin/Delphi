@@ -11,14 +11,15 @@ import { validateFields } from "@/lib/form-validation";
 import { formatDate, formatRange, formatTime, plural } from "@/lib/utils";
 import type { Registration, RegistrationEvent } from "@/types";
 
-type ManageRegistrationProps = { token: string; event: RegistrationEvent; initialRegistration: Registration };
-type UpdateResponse = { registration: Registration; emailed: boolean };
+type ManageRegistrationProps = { token: string; initialEvent: RegistrationEvent; initialRegistration: Registration };
+type UpdateResponse = { registration: Registration; event: RegistrationEvent; emailed: boolean };
 
 function prefersReducedMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function ManageRegistration({ token, event, initialRegistration }: ManageRegistrationProps) {
+export function ManageRegistration({ token, initialEvent, initialRegistration }: ManageRegistrationProps) {
+  const [event, setEvent] = useState(initialEvent);
   const [registration, setRegistration] = useState(initialRegistration);
   const [slotId, setSlotId] = useState(initialRegistration.slotId ?? "");
   const [answers, setAnswers] = useState(initialRegistration.answers);
@@ -49,6 +50,7 @@ export function ManageRegistration({ token, event, initialRegistration }: Manage
     setSaving(false);
     if (!ok || !data.registration) return setNotice({ ok: false, text: error || "Your changes couldn't be saved. Please try again." });
     setRegistration(data.registration);
+    setEvent(data.event);
     setNotice({ ok: true, text: data.emailed && data.registration.emailStatus === "sent" ? `Changes saved. We emailed an updated confirmation to ${registration.email}.` : "Changes saved." });
   }
 
