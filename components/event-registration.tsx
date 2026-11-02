@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CalendarDays, Check, Clock3, MapPin, Users } from "lucide-react";
-import { eventPhase, formatDate, formatRange, formatTime } from "@/lib/utils";
+import { eventPhase, formatDate, formatRange, formatTime, suggestEmail } from "@/lib/utils";
 import { RichText } from "@/components/rich-text";
 import { validateFields } from "@/lib/form-validation";
 import type { FormField, RegistrationEvent } from "@/types";
@@ -18,7 +18,7 @@ async function readApiJson<T extends { error?: string }>(response: Response): Pr
   }
 }
 
-function Field({ field, value, onChange }: { field: FormField; value: string | string[] | boolean | undefined; onChange: (value: string | string[] | boolean) => void }) {
+export function Field({ field, value, onChange }: { field: FormField; value: string | string[] | boolean | undefined; onChange: (value: string | string[] | boolean) => void }) {
   const id = `field-${field.id}`;
   const common = { id, required: field.required, "aria-describedby": field.helpText ? `${id}-help` : undefined };
   if (field.type === "long_text") return <textarea {...common} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder} rows={4} />;
@@ -41,6 +41,9 @@ export function EventRegistration({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [complete, setComplete] = useState<{ email: string; emailStatus: string } | null>(null);
+  const [duplicateEmail, setDuplicateEmail] = useState("");
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch(`/api/events/${encodeURIComponent(slug)}`).then(async (response) => {
@@ -65,6 +68,7 @@ export function EventRegistration({ slug }: { slug: string }) {
     if (!event || !validateFields(formEvent.currentTarget)) return;
     const form = new FormData(formEvent.currentTarget);
     setError("");
+    setDuplicateEmail("");
     setSending(true);
     const response = await fetch(`/api/events/${event.id}/register`, {
       method: "POST",
@@ -83,6 +87,10 @@ export function EventRegistration({ slug }: { slug: string }) {
       return setError(reason instanceof Error ? reason.message : "Registration failed. Please try again.");
     }
     setSending(false);
+    if (response.status === 409) {
+      setDuplicateEmail(String(form.get("email") ?? ""));
+      requestAnimationFrame(() => document.getElementById("manage-link-request")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    }
     if (!response.ok) return setError(data.error || "Registration failed.");
     setComplete({ email: data.registration?.email ?? String(form.get("email") ?? ""), emailStatus: data.emailStatus ?? "previewed" });
     window.scrollTo({ top: 0 });
@@ -98,7 +106,7 @@ export function EventRegistration({ slug }: { slug: string }) {
     <section className="shell confirmation-page">
       <div className="confirmation-card" style={{ "--event-accent": selectedSlot?.accentColor || event.accentColor } as React.CSSProperties}>
         <div className="confirmation-icon"><Check /></div><span className="eyebrow">You&apos;re registered</span><h1>We&apos;ll see you there.</h1>
-        <p>{complete.emailStatus === "sent" ? <>We emailed a confirmation to <strong>{complete.email}</strong>. Keep it handy when you arrive.</> : complete.emailStatus === "failed" ? <>You&apos;re registered, but we couldn&apos;t send the confirmation email to <strong>{complete.email}</strong>. Take a screenshot of this page to show at the door.</> : <>You&apos;re registered as <strong>{complete.email}</strong>. Confirmation emails are turned off on this preview server.</>}</p>
+        <p>{complete.emailStatus === "sent" ? <>We emailed a confirmation to <strong>{complete.email}</strong>. Keep it handy when you arrive. If you need to change your answers or withdraw, use the link in that email.</> : complete.emailStatus === "failed" ? <>You&apos;re registered, but we couldn&apos;t send the confirmation email to <strong>{complete.email}</strong>. Take a screenshot of this page to show at the door.</> : <>You&apos;re registered as <strong>{complete.email}</strong>. Confirmation emails are turned off on this preview server.</>}</p>
         <div className="confirmation-ticket"><strong>{event.title}</strong>{selectedSlot && <span>{selectedSlot.label}</span>}<span>{formatRange(selectedSlot?.startAt || event.startAt, selectedSlot?.endAt || event.endAt)}</span><span>{selectedSlot?.location || event.location}</span></div>
         <Link href="/" className="text-link"><ArrowLeft size={17} /> Back to all events</Link>
       </div>
@@ -125,15 +133,50 @@ export function EventRegistration({ slug }: { slug: string }) {
                 const full = slot.remaining === 0;
                 return <label key={slot.id} className={`slot-card ${slotId === slot.id ? "slot-card--selected" : ""} ${full ? "slot-card--full" : ""}`}><input type="radio" name="slot" value={slot.id} checked={slotId === slot.id} onChange={() => setSlotId(slot.id)} required disabled={full} /><span className="slot-card__check"><Check /></span><strong>{slot.label}</strong><span>{formatDate(slot.startAt)} · {formatTime(slot.startAt)}–{formatTime(slot.endAt)}</span><span><MapPin size={15} /> {slot.location}</span><small>{full ? "Full" : slot.remaining === null ? "Available" : `${slot.remaining} spot${slot.remaining === 1 ? "" : "s"} left`}</small></label>;
               })}</div></fieldset>}
-              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label><span>First name <em>*</em></span><input name="firstName" autoComplete="given-name" required /></label><label><span>Last name <em>*</em></span><input name="lastName" autoComplete="family-name" required /></label><label><span>Email address <em>*</em></span><input name="email" type="email" autoComplete="email" required placeholder="name@tamu.edu" pattern={event.tamuEmailOnly ? ".+@[Tt][Aa][Mm][Uu]\\.[Ee][Dd][Uu]" : undefined} title={event.tamuEmailOnly ? "Use your @tamu.edu email address" : undefined} />{event.tamuEmailOnly && <small>This event requires an @tamu.edu email address.</small>}</label><label><span>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}</span><input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} /></label></div></fieldset>
+              <fieldset><legend><span>{event.slots.length ? "02" : "01"}</span> Your information</legend><div className="form-grid"><label><span>First name <em>*</em></span><input name="firstName" autoComplete="given-name" required /></label><label><span>Last name <em>*</em></span><input name="lastName" autoComplete="family-name" required /></label><label><span>Email address <em>*</em></span><input ref={emailRef} name="email" type="email" autoComplete="email" required placeholder="name@tamu.edu" pattern={event.tamuEmailOnly ? ".+@[Tt][Aa][Mm][Uu]\\.[Ee][Dd][Uu]" : undefined} title={event.tamuEmailOnly ? "Use your @tamu.edu email address" : undefined} onBlur={(blurEvent) => setEmailSuggestion(suggestEmail(blurEvent.target.value))} onInput={() => setEmailSuggestion(null)} aria-describedby="email-suggestion" />{event.tamuEmailOnly && <small>This event requires an @tamu.edu email address.</small>}<span id="email-suggestion" aria-live="polite">{emailSuggestion && <small className="email-suggestion">Did you mean <button type="button" onClick={() => { if (emailRef.current) { emailRef.current.value = emailSuggestion; emailRef.current.dispatchEvent(new Event("input", { bubbles: true })); } setEmailSuggestion(null); }}>{emailSuggestion}</button>?</small>}</span></label><label><span>UIN {event.uinRequired ? <em>*</em> : <small>(optional)</small>}</span><input name="uin" inputMode="numeric" pattern="[0-9]{9}" placeholder="9 digits" title="Enter your 9-digit UIN" required={event.uinRequired} /></label></div></fieldset>
               {event.formFields.length > 0 && <fieldset><legend><span>{event.slots.length ? "03" : "02"}</span> Event questions</legend><div className="form-stack">{event.formFields.map((field) => field.type === "section" ? <div key={field.id} className="form-section-block">{field.label && <h3>{field.label}</h3>}{field.helpText && <RichText text={field.helpText} />}</div> : <label key={field.id} className="custom-field" data-field htmlFor={`field-${field.id}`}><span>{field.label} {field.required && <em>*</em>}</span>{field.helpText && <small id={`field-${field.id}-help`}>{field.helpText}</small>}<Field field={field} value={answers[field.id]} onChange={(value) => setAnswers((current) => ({ ...current, [field.id]: value }))} /></label>)}</div></fieldset>}
               {error && <div className="form-error" role="alert">{error}</div>}
               <button className="button button--primary button--large" disabled={sending}>{sending ? "Registering…" : "Complete registration"} <ArrowRightIcon /></button><p className="form-fine-print">You&apos;ll receive a confirmation with your date, time, and room details.</p>
             </form>
           )}
+          {(phase === "open" || phase === "closed") && <ManageLinkRequest key={duplicateEmail} eventId={event.id} initialEmail={duplicateEmail} startOpen={Boolean(duplicateEmail)} />}
         </div>
       </div>
     </>
+  );
+}
+
+// For registrants who lost their confirmation email: sends their manage link again.
+function ManageLinkRequest({ eventId, initialEmail, startOpen }: { eventId: string; initialEmail: string; startOpen: boolean }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "preview">("idle");
+  const [error, setError] = useState("");
+
+  async function submit(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    if (!validateFields(formEvent.currentTarget)) return;
+    setError("");
+    setStatus("sending");
+    const response = await fetch(`/api/events/${eventId}/manage-link`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) }).catch(() => null);
+    const data = response ? await response.json().catch(() => ({})) as { error?: string; preview?: boolean } : {};
+    if (!response?.ok) {
+      setStatus("idle");
+      return setError(data.error || "Could not reach the server. Check your connection and try again.");
+    }
+    setStatus(data.preview ? "preview" : "sent");
+  }
+
+  return (
+    <details id="manage-link-request" className="manage-link-request" open={startOpen || undefined}>
+      <summary>Already registered? Change or withdraw your registration</summary>
+      {status === "sent" || status === "preview" ? <p className="form-success" role="status">{status === "sent" ? <>If <strong>{email}</strong> is registered for this event, we&apos;ve emailed it a link to manage the registration.</> : "Email sending is turned off on this preview server, so no link was sent."}</p> : (
+        <form onSubmit={submit} noValidate>
+          <p>Enter the email you registered with and we&apos;ll send you a link to change your answers or withdraw.</p>
+          <div className="manage-link-request__row"><label><span className="sr-only">Email address</span><input type="email" required autoComplete="email" placeholder="name@tamu.edu" value={email} onChange={(event) => setEmail(event.target.value)} /></label><button className="button button--secondary" disabled={status === "sending"}>{status === "sending" ? "Sending…" : "Email me a link"}</button></div>
+          {error && <div className="form-error" role="alert">{error}</div>}
+        </form>
+      )}
+    </details>
   );
 }
 

@@ -9,6 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id, registrationId } = await params;
   const [event, registration] = await Promise.all([getEvent(id, true), getRegistration(id, registrationId)]);
   if (!event || !registration) return NextResponse.json({ error: "Participant not found." }, { status: 404 });
+  if (registration.status === "cancelled") return NextResponse.json({ error: `${registration.firstName} withdrew, so there's no registration to confirm.` }, { status: 400 });
   let emailStatus = "failed";
   try {
     emailStatus = (await sendConfirmation(registration, event, event.slots.find((slot) => slot.id === registration.slotId) ?? null)).status;

@@ -1,22 +1,10 @@
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/auth";
-import { createRegistration, updateEmailStatus } from "@/lib/store";
+import { createRegistration, DuplicateRegistrationError, updateEmailStatus } from "@/lib/store";
 import { sendConfirmation } from "@/lib/email";
+import { rateLimiter } from "@/lib/rate-limit";
 
-const attempts = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimited(request: Request) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now();
-  if (attempts.size > 5000) attempts.forEach((entry, key) => { if (entry.resetAt < now) attempts.delete(key); });
-  const current = attempts.get(ip);
-  if (!current || current.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + 60_000 });
-    return false;
-  }
-  current.count++;
-  return current.count > 10;
-}
+const rateLimited = rateLimiter(10);
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -37,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     // Postgres errors carry a code; only our own validation messages are safe to show students.
     const code = (error as { code?: string })?.code;
-    if (code === "23505") return NextResponse.json({ error: "This email is already registered for the event." }, { status: 409 });
+    if (code === "23505" || error instanceof DuplicateRegistrationError) return NextResponse.json({ error: "This email is already registered for the event." }, { status: 409 });
     if (code || !(error instanceof Error)) {
       console.error("Registration failed", error);
       return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 500 });

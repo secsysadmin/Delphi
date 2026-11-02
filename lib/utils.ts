@@ -136,3 +136,25 @@ export function registrationWindowProblem(event: { registrationCloseAt: string; 
   if (close > new Date(event.endAt).getTime()) return "Registration has to close before the event ends.";
   return null;
 }
+
+const COMMON_EMAIL_DOMAINS = ["tamu.edu", "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "live.com", "aol.com"];
+
+function editDistance(a: string, b: string) {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+// "name@tamu.edy" -> "name@tamu.edu". Catches near-misses of common domains and a wrong ending on a
+// known one ("tamu.com"); returns null when the address looks fine or isn't close to anything.
+export function suggestEmail(email: string) {
+  const [local, domain, ...rest] = email.trim().toLowerCase().split("@");
+  if (!local || !domain || rest.length || COMMON_EMAIL_DOMAINS.includes(domain)) return null;
+  const match = COMMON_EMAIL_DOMAINS.find((candidate) => editDistance(domain, candidate) <= 2)
+    ?? COMMON_EMAIL_DOMAINS.find((candidate) => domain.split(".")[0] === candidate.split(".")[0]);
+  return match ? `${local}@${match}` : null;
+}

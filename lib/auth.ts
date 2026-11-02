@@ -69,6 +69,21 @@ export async function isAdmin() {
   return hasDatabase ? Boolean(await getAdminUserByEmail(email)) : true;
 }
 
+// Students don't sign in. The link in their confirmation email carries a signature over the
+// registration ID, so only someone who received that email can edit or withdraw it.
+// The "manage:" prefix keeps these signatures distinct from session-cookie ones.
+export function manageToken(registrationId: string) {
+  return `${registrationId}.${sign(`manage:${registrationId}`)}`;
+}
+
+export function registrationIdFromManageToken(token: string) {
+  const [registrationId, signature] = token.split(".");
+  if (!registrationId || !signature || !/^[0-9a-f-]{36}$/i.test(registrationId)) return null;
+  const expected = sign(`manage:${registrationId}`);
+  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  return registrationId;
+}
+
 /** Browser-facing mutation routes must originate from this application. */
 export function isSameOriginRequest(request: Request) {
   const origin = request.headers.get("origin");
