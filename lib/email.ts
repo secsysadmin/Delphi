@@ -81,7 +81,11 @@ const isThrottle = (error: unknown) => {
 
 async function deliverEmail({ to, subject, html, text }: { to: string; subject: string; html: string; text: string }) {
   const provider = emailProvider();
-  if (!provider) return null;
+  if (!provider) {
+    // Local testing has no inbox; print the email so links like the manage link can be followed.
+    if (process.env.NODE_ENV === "development") console.info(`\n[email not sent] To: ${to}\nSubject: ${subject}\n\n${text}\n`);
+    return null;
+  }
   const from = process.env.EMAIL_FROM || defaultFrom;
   for (let attempt = 1; ; attempt++) {
     try {
