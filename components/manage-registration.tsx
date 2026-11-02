@@ -50,7 +50,7 @@ export function ManageRegistration({ token, initialEvent, initialRegistration }:
     setSaving(false);
     if (!ok || !data.registration) return setNotice({ ok: false, text: error || "Your changes couldn't be saved. Please try again." });
     setRegistration(data.registration);
-    setEvent(data.event);
+    if (data.event) setEvent(data.event);
     setNotice({ ok: true, text: data.emailed && data.registration.emailStatus === "sent" ? `Changes saved. We emailed an updated confirmation to ${registration.email}.` : "Changes saved." });
   }
 
