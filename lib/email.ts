@@ -22,6 +22,7 @@ const BUTTON_MARGIN = "24px 0 0";
 const MANAGE_BUTTON_MARGIN = "10px 0 0";
 const MANAGE_PROMPT = "Need to change your answers or can't make it?";
 const DEFAULT_DEV_PORT = "3000";
+const PREVIEW_ENVIRONMENT = "preview";
 const MISSING_APP_URL_WARNING = "NEXT_PUBLIC_APP_URL isn't set, so emails are going out without a manage link.";
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" };
 
@@ -192,10 +193,16 @@ function localDevUrl() {
   return process.env.NODE_ENV === "development" ? `http://localhost:${process.env.PORT || DEFAULT_DEV_PORT}` : null;
 }
 
+function previewDeploymentUrl() {
+  if (process.env.VERCEL_ENV !== PREVIEW_ENVIRONMENT) return null;
+  const host = process.env.VERCEL_BRANCH_URL || process.env.VERCEL_URL;
+  return host ? `https://${host}` : null;
+}
+
 // Never use the request's Host header here: the public link-request endpoint would email real links to forged domains.
 function appUrl() {
   const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  const configured = process.env.NEXT_PUBLIC_APP_URL || vercelUrl || localDevUrl();
+  const configured = process.env.NEXT_PUBLIC_APP_URL || previewDeploymentUrl() || vercelUrl || localDevUrl();
   return configured ? configured.replace(/\/+$/, "") : null;
 }
 
