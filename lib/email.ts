@@ -21,6 +21,8 @@ const MUTED_TEXT_COLOR = "#6b6864";
 const BUTTON_MARGIN = "24px 0 0";
 const MANAGE_BUTTON_MARGIN = "10px 0 0";
 const MANAGE_PROMPT = "Need to change your answers or can't make it?";
+const DEFAULT_DEV_PORT = "3000";
+const MISSING_APP_URL_WARNING = "NEXT_PUBLIC_APP_URL isn't set, so emails are going out without a manage link.";
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" };
 
 type Mail = { to: string; subject: string; html: string; text: string };
@@ -186,13 +188,20 @@ function broadcastHtml(body: string) {
   return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px"><div style="height:8px;background:${BRAND_COLOR}"></div><div style="font-size:16px;line-height:1.7;white-space:pre-line;padding:24px 4px">${escapeHtml(body)}</div><p style="color:#777;font-size:12px">SEC Registration Hub · Texas A&amp;M University</p></div>`;
 }
 
+function localDevUrl() {
+  return process.env.NODE_ENV === "development" ? `http://localhost:${process.env.PORT || DEFAULT_DEV_PORT}` : null;
+}
+
+// Never use the request's Host header here: the public link-request endpoint would email real links to forged domains.
 function appUrl() {
-  const configured = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`);
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  const configured = process.env.NEXT_PUBLIC_APP_URL || vercelUrl || localDevUrl();
   return configured ? configured.replace(/\/+$/, "") : null;
 }
 
 function manageUrl(registrationId: string) {
   const base = appUrl();
+  if (!base) console.warn(MISSING_APP_URL_WARNING);
   return base ? `${base}/registration/${manageToken(registrationId)}` : null;
 }
 
