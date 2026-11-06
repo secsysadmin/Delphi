@@ -1,6 +1,7 @@
 import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
 import { Resend } from "resend";
 import { manageToken } from "@/lib/auth";
+import { finishBroadcastLog, finishBroadcastRecipient, startBroadcastLog, startBroadcastRecipient } from "@/lib/store";
 import type { EventSlot, Registration, RegistrationEvent } from "@/types";
 import { confirmationColors, confirmationTemplate, fillTemplate, formatRange, templateValues } from "@/lib/utils";
 
@@ -31,7 +32,7 @@ type Person = Pick<Registration, "firstName" | "lastName">;
 type Provider = { name: "ses"; client: SESClient } | { name: "resend"; client: Resend };
 type BroadcastInput = { registrations: Registration[]; event: RegistrationEvent; subject: string; body: string };
 
-export type BroadcastResult = { sent: number; failed: number; failedEmails: string[]; preview: boolean };
+export type BroadcastResult = { sent: number; failed: number; failedEmails: string[]; preview: boolean; broadcastId?: string };
 
 let sesClient: SESClient | null = null;
 
@@ -269,24 +270,40 @@ function pacer(perSecond: number) {
 
 export async function sendBroadcast({ registrations, event, subject, body }: BroadcastInput): Promise<BroadcastResult> {
   if (!canSendEmail()) return { sent: registrations.length, failed: 0, failedEmails: [], preview: true };
+  const broadcastId = await startBroadcastLog({ eventId: event.id, subject, registrations });
   const failedEmails: string[] = [];
   const queue = [...registrations];
+  let loggingFailed = false;
   const pace = pacer(Number(process.env.EMAIL_SEND_RATE) || DEFAULT_SEND_RATE_PER_SECOND);
   const sendTo = async (registration: Registration) => {
     await pace();
+    if (loggingFailed) return;
     const slot = event.slots.find((item) => item.id === registration.slotId) ?? null;
     const values = templateValues(registration, event, slot);
     const renderedBody = fillTemplate(body, values);
+    await startBroadcastRecipient(broadcastId, registration.id);
+    let providerId: string | null = null;
     try {
-      await deliverEmail({ to: registration.email, subject: fillTemplate(subject, values), text: renderedBody, html: broadcastHtml(renderedBody) });
+      providerId = await deliverEmail({ to: registration.email, subject: fillTemplate(subject, values), text: renderedBody, html: broadcastHtml(renderedBody) });
     } catch (error) {
       failedEmails.push(registration.email);
       console.error(`Broadcast to registration ${registration.id} failed`, error);
     }
+    if (!providerId && !failedEmails.includes(registration.email)) failedEmails.push(registration.email);
+    await finishBroadcastRecipient({ broadcastId, registrationId: registration.id, providerId });
   };
   const worker = async () => {
-    for (let next = queue.shift(); next; next = queue.shift()) await sendTo(next);
+    try {
+      for (let next = queue.shift(); next && !loggingFailed; next = queue.shift()) await sendTo(next);
+    } catch (error) {
+      loggingFailed = true;
+      console.error(`Broadcast ${broadcastId} progress logging failed`, error);
+    }
   };
   await Promise.all(Array.from({ length: Math.min(BROADCAST_WORKERS, registrations.length) }, worker));
-  return { sent: registrations.length - failedEmails.length, failed: failedEmails.length, failedEmails, preview: false };
+  if (loggingFailed) throw new Error("Broadcast progress could not be saved. Check its recipient records before retrying.");
+  const sent = registrations.length - failedEmails.length;
+  await finishBroadcastLog(broadcastId, failedEmails.length ? (sent ? "partial" : "failed") : "sent")
+    .catch((error) => console.error(`Could not finalize broadcast ${broadcastId}`, error));
+  return { sent, failed: failedEmails.length, failedEmails, preview: false, broadcastId };
 }

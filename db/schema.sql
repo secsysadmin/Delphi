@@ -95,3 +95,15 @@ create table if not exists sec_registration.email_logs (
   provider_id text,
   created_at timestamptz not null default now()
 );
+
+create table if not exists sec_registration.broadcast_recipients (
+  broadcast_id uuid not null references sec_registration.email_logs(id) on delete cascade,
+  registration_id uuid not null,
+  email text not null,
+  send_order integer not null,
+  status text not null default 'pending' check (status in ('pending', 'sending', 'accepted', 'unknown')),
+  provider_id text,
+  started_at timestamptz,
+  completed_at timestamptz,
+  primary key (broadcast_id, registration_id)
+);

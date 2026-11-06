@@ -417,6 +417,38 @@ export async function logEmail({ eventId, recipientCount, subject, status }: { e
   await sql`insert into sec_registration.email_logs (event_id, recipient_count, subject, status) values (${eventId}, ${recipientCount}, ${subject}, ${status})`;
 }
 
+export async function startBroadcastLog({ eventId, subject, registrations }: { eventId: string; subject: string; registrations: Registration[] }) {
+  const id = randomUUID();
+  if (!sql) return id;
+  const recipients = registrations.map((registration, index) => ({
+    broadcast_id: id,
+    registration_id: registration.id,
+    email: registration.email,
+    send_order: index + 1,
+  }));
+  await sql.begin(async (tx) => {
+    await tx`insert into sec_registration.email_logs (id, event_id, recipient_count, subject, status) values (${id}, ${eventId}, ${registrations.length}, ${subject}, 'sending')`;
+    await tx`insert into sec_registration.broadcast_recipients ${tx(recipients, 'broadcast_id', 'registration_id', 'email', 'send_order')}`;
+  });
+  return id;
+}
+
+export async function startBroadcastRecipient(broadcastId: string, registrationId: string) {
+  if (!sql) return;
+  await sql`update sec_registration.broadcast_recipients set status = 'sending', started_at = now() where broadcast_id = ${broadcastId} and registration_id = ${registrationId}`;
+}
+
+export async function finishBroadcastRecipient({ broadcastId, registrationId, providerId }: { broadcastId: string; registrationId: string; providerId: string | null }) {
+  if (!sql) return;
+  const status = providerId ? 'accepted' : 'unknown';
+  await sql`update sec_registration.broadcast_recipients set status = ${status}, provider_id = ${providerId}, completed_at = now() where broadcast_id = ${broadcastId} and registration_id = ${registrationId}`;
+}
+
+export async function finishBroadcastLog(broadcastId: string, status: string) {
+  if (!sql) return;
+  await sql`update sec_registration.email_logs set status = ${status} where id = ${broadcastId}`;
+}
+
 export function previewEvent(rawInput: EventInput): RegistrationEvent {
   const input = cleanInput({ ...rawInput, status: "draft" });
   const timestamp = new Date().toISOString();

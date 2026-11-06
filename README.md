@@ -22,6 +22,23 @@ Without environment variables, the app opens in a fully populated preview mode. 
 6. For the established SEC sender, add `EMAIL_PROVIDER=ses`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` in Vercel. Set `EMAIL_FROM` to `Student Engineers' Council <no-reply@sec.tamu.edu>`. SES must have that address or domain verified, and the account must be out of the SES sandbox to send to unverified registrant addresses. Resend remains available as an alternative provider. Broadcasts send at `EMAIL_SEND_RATE` emails per second (default 10, under SES's default limit of 14); throttled sends are retried, and any addresses that still fail are listed back to the admin.
 7. Set `NEXT_PUBLIC_APP_URL` to the production URL and deploy. Confirmation emails use it to build each registrant's "Manage your registration" link. Those links are signed with `AUTH_SECRET`, so changing `AUTH_SECRET` invalidates every link already sent (registrants can request a new one from the event page).
 
+## Broadcast progress
+
+Run `npm run db:migrate` before deploying the broadcast logging change. Each real broadcast creates an `email_logs` row before sending and snapshots recipients in `broadcast_recipients`. The API returns its `broadcastId` when the request completes. If it times out, find the broadcast in `email_logs` by event, subject, and creation time.
+
+Recipient statuses are `pending` (not started), `sending` (started, no saved outcome), `accepted` (provider returned a message ID), and `unknown` (the provider call failed or returned no ID). `accepted` does not confirm delivery to the recipient's mail server or inbox. A timeout can happen after the provider accepts a message but before its ID is saved; do not automatically resend `sending` or `unknown` recipients. Progress logging failures stop further dispatch after in-flight attempts settle. An interrupted broadcast can retain the overall `sending` status.
+
+Inspect a broadcast with a bound broadcast UUID:
+
+```sql
+select email, send_order, status, provider_id, started_at, completed_at
+from sec_registration.broadcast_recipients
+where broadcast_id = $1
+order by send_order;
+```
+
+This logging applies to broadcasts sent after deployment; it cannot reconstruct earlier sends. Background processing and SES delivery-event ingestion are not implemented.
+
 ## Testing
 
 **Development and Preview use a separate dev database.** It's a schema-only `dev` branch of the production Neon project, so it copies the tables but none of the real registrants, and it has been seeded with the demo events. Vercel's Development and Preview environments point `DATABASE_URL` and `DATABASE_URL_UNPOOLED` at it, and Production keeps its own. Neither environment has email credentials, so nothing is sent from them: locally each email is printed in the terminal, and on a preview deploy it is dropped. Manage links on a preview deploy point at that preview's own URL.

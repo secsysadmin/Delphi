@@ -1,16 +1,10 @@
 import { NextResponse } from "next/server";
 import { rejectNonAdminMutation } from "@/lib/api-guard";
-import { sendBroadcast, type BroadcastResult } from "@/lib/email";
+import { sendBroadcast } from "@/lib/email";
 import { publicError } from "@/lib/errors";
 import { getEvent, getRegistrations, logEmail } from "@/lib/store";
 
 export const maxDuration = 900;
-
-function broadcastStatus(result: BroadcastResult) {
-  if (result.preview) return "previewed";
-  if (!result.failed) return "sent";
-  return result.sent ? "partial" : "failed";
-}
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const rejected = await rejectNonAdminMutation(request);
@@ -25,7 +19,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const registrations = all.filter((item) => registrationIds.includes(item.id) && item.status === "confirmed");
     if (!registrations.length) return NextResponse.json({ error: "No confirmed recipients selected." }, { status: 400 });
     const result = await sendBroadcast({ registrations, event, subject, body });
-    await logEmail({ eventId: event.id, recipientCount: registrations.length, subject, status: broadcastStatus(result) })
+    if (result.preview) await logEmail({ eventId: event.id, recipientCount: registrations.length, subject, status: "previewed" })
       .catch((error) => console.error(`Could not log broadcast for event ${event.id}`, error));
     return NextResponse.json(result);
   } catch (error) {
