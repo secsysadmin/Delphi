@@ -4,7 +4,7 @@ import { sendBroadcast, type BroadcastResult } from "@/lib/email";
 import { publicError } from "@/lib/errors";
 import { getEvent, getRegistrations, logEmail } from "@/lib/store";
 
-export const maxDuration = 60;
+export const maxDuration = 900;
 
 function broadcastStatus(result: BroadcastResult) {
   if (result.preview) return "previewed";
